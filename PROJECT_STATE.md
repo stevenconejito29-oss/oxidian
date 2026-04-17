@@ -11,19 +11,20 @@
 - `main` local y `origin/main` estan sincronizados en el commit `bdd501f`.
 - El remoto `https://github.com/stevenconejito29-oss/oxidian2.git` no existe o no es accesible actualmente.
 - El arbol SaaS local fue preparado para ser versionado completo en `oxidian`.
-- El proyecto enlazado en Vercel desde `frontend/.vercel/project.json` es `oxidian2`.
-- Se verifico un deploy preview exitoso en Vercel desde `frontend`.
+- El proyecto enlazado en Vercel desde `frontend/.vercel/project.json` fue realineado a `oxidian`.
+- Se verifico un deploy productivo exitoso en Vercel sobre `oxidian`.
 
 ## Hallazgos de arquitectura y despliegue
 
 - El frontend Vite si compila y despliega en Vercel.
-- El despliegue verificado corresponde al proyecto Vercel `oxidian2`, no al repo Git actual `oxidian`.
+- El despliegue verificado ya corresponde al proyecto Vercel `oxidian`, alineado con el repo Git actual `oxidian`.
 - El proyecto de Vercel actual esta configurado como frontend-only; hoy no hay evidencia de que el backend Flask se despliegue en ese mismo proyecto.
 - En la raiz existe `api/` con funciones Node para Vercel, pero el flujo operativo actual de deploy se esta ejecutando desde `frontend`, por lo que esa capa no forma parte del deploy verificado.
 - Existen dos configuraciones de Vercel:
   - `frontend/vercel.json`: coherente con un deploy Vite estatico.
   - `vercel.json` en raiz: preparado para importar el repo completo y compilar `frontend/dist`.
 - El proyecto Vercel no esta conectado a un repositorio Git, por eso hoy el deploy automatico por push no esta garantizado.
+- El deploy hook compartido por el usuario pertenece al proyecto `oxidian`; el enlace local fue ajustado para apuntar a ese mismo proyecto.
 
 ## Hallazgos de seguridad
 
