@@ -1,0 +1,83 @@
+import { OXIDIAN_ENTRY_PATH } from './oxidianAccess'
+
+const STORAGE_KEYS = {
+  oxidian: 'oxidian_admin',
+  admin: 'cc_admin',
+  cocina: 'carmocream_staff_cocina',
+  repartidor: 'carmocream_staff_repartidor',
+}
+
+function safeParse(raw) {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function isExpired(expiresAt) {
+  if (!expiresAt) return false
+  const time = new Date(expiresAt).getTime()
+  if (Number.isNaN(time)) return false
+  return Date.now() >= time
+}
+
+function storageForKey(key) {
+  if (typeof window === 'undefined') return null
+  if (key === STORAGE_KEYS.cocina || key === STORAGE_KEYS.repartidor) return window.localStorage
+  return window.sessionStorage
+}
+
+function resolveRouteKey(pathname = '') {
+  if (pathname === OXIDIAN_ENTRY_PATH || /^\/oxidian(?:\/|$)/.test(pathname)) return STORAGE_KEYS.oxidian
+  if (/\/pedidos(?:\/|$)/.test(pathname)) return STORAGE_KEYS.cocina
+  if (/\/repartidor(?:\/|$)/.test(pathname)) return STORAGE_KEYS.repartidor
+  if (/\/admin(?:\/|$)/.test(pathname)) return STORAGE_KEYS.admin
+  return STORAGE_KEYS.admin
+}
+
+export function loadStoredSession(key) {
+  if (typeof window === 'undefined') return null
+  const storage = storageForKey(key)
+  if (!storage) return null
+
+  const value = safeParse(storage.getItem(key))
+  if (!value) return null
+  if (isExpired(value.auth_expires_at)) {
+    storage.removeItem(key)
+    return null
+  }
+  return value
+}
+
+export function persistStoredSession(key, payload) {
+  if (typeof window === 'undefined') return
+  const storage = storageForKey(key)
+  if (!storage) return
+  storage.setItem(key, JSON.stringify(payload))
+}
+
+export function clearStoredSession(key) {
+  if (typeof window === 'undefined') return
+  const storage = storageForKey(key)
+  if (!storage) return
+  storage.removeItem(key)
+}
+
+export function readCurrentSupabaseAccessToken(fallbackToken = '') {
+  if (typeof window === 'undefined') return fallbackToken
+  const key = resolveRouteKey(window.location.pathname)
+  const session = loadStoredSession(key)
+  return session?.supabase_access_token || fallbackToken
+}
+
+export function hasCurrentRouteSession() {
+  if (typeof window === 'undefined') return false
+  const key = resolveRouteKey(window.location.pathname)
+  return Boolean(loadStoredSession(key)?.supabase_access_token)
+}
+
+export {
+  STORAGE_KEYS,
+}

@@ -1,0 +1,290 @@
+/* ================================================================
+   CarmoCream — Cocina (Pedidos) v5 — Optimizado para tablet
+   Layout: cola izquierda + ticket derecha en ≥768px
+   ================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Pacifico&display=swap');
+*, *::before, *::after { box-sizing: border-box; }
+
+@keyframes pulse { 0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(230,126,34,0)} 50%{transform:scale(1.02);box-shadow:0 0 0 6px rgba(230,126,34,.18)} }
+@keyframes slideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+
+.page {
+  min-height: 100dvh;
+  background: #F0EDE5;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: #1C2D1A;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ── */
+.bar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 62px;
+  background:
+    radial-gradient(ellipse 70% 80% at 10% 50%, rgba(64,145,108,0.18) 0%, transparent 60%),
+    linear-gradient(135deg, #0d1f16, #1a4030 55%, #2d6a4f);
+  box-shadow: 0 4px 24px rgba(0,0,0,.32);
+  flex-shrink: 0;
+}
+.logo { width: 36px; height: 36px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,.2); }
+.barInfo { display: flex; flex-direction: column; gap: 1px; }
+.barTitle { color: white; font-family: 'Pacifico', cursive; font-size: 1.05rem; line-height: 1; }
+.barSub   { color: rgba(255,255,255,.55); font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.barRight { display: flex; align-items: center; gap: 8px; }
+.live { padding: 4px 9px; border-radius: 999px; background: rgba(74,222,128,.14); border: 1px solid rgba(74,222,128,.22); color: #86efac; font-size: .62rem; font-weight: 900; white-space: nowrap; }
+.iconBtn { width: 42px; height: 42px; border: 1.5px solid rgba(255,255,255,.15); border-radius: 12px; background: rgba(255,255,255,.11); color: white; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; transition: background .14s; }
+.iconBtn:hover { background: rgba(255,255,255,.2); }
+
+/* ── LAYOUT BODY ── */
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Tablet ≥ 768px: cola + ticket side by side */
+@media (min-width: 768px) {
+  .body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0;
+  }
+}
+
+/* ── COLA DE PEDIDOS ── */
+.queue {
+  background: white;
+  border-bottom: 1.5px solid #E5E7EB;
+  padding: 12px 14px 10px;
+  flex-shrink: 0;
+}
+@media (min-width: 768px) {
+  .queue {
+    width: 320px;
+    border-bottom: none;
+    border-right: 1.5px solid #E5E7EB;
+    height: calc(100dvh - 60px);
+    position: sticky;
+    top: 60px;
+    overflow-y: auto;
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+@media (min-width: 1200px) { .queue { width: 380px; } }
+
+.queueBoard {
+  display: grid;
+  gap: 10px;
+}
+
+.queueSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.queueSummaryCard {
+  border-radius: 14px;
+  background: #f7f7f2;
+  border: 1px solid #ebe7df;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.queueSummaryLabel {
+  display: block;
+  font-size: .58rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8AAF80;
+}
+
+.queueSummaryValue {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.queueLaneEmpty {
+  width: 100%;
+  padding: 12px 10px;
+  border-radius: 12px;
+  background: #f9fafb;
+  color: #9CA3AF;
+  font-size: .74rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.queueTitle {
+  font-size: .68rem; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .10em; color: #8AAF80;
+  padding: 0 4px 8px; display: none;
+}
+@media (min-width: 768px) { .queueTitle { display: block; } }
+
+.queueLanes {
+  display: grid;
+  gap: 10px;
+}
+
+.queueLane {
+  display: grid;
+  gap: 8px;
+}
+
+.queueLaneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.queueLaneTitle {
+  font-size: .74rem;
+  font-weight: 900;
+  color: #1C2D1A;
+}
+
+.queueLaneSub {
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8AAF80;
+}
+
+.queueLaneCount {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #f4f4ef;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .76rem;
+  font-weight: 900;
+}
+
+.queueRow {
+  display: flex; gap: 8px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.queueRow::-webkit-scrollbar { display: none; }
+@media (min-width: 768px) {
+  .queueRow {
+    flex-direction: column;
+    overflow-x: visible;
+    overflow-y: visible;
+    padding-bottom: 0;
+    gap: 5px;
+  }
+
+  .queueSummary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.queueChip {
+  flex-shrink: 0; display: flex; flex-direction: column;
+  align-items: center; gap: 2px;
+  padding: 9px 12px; border-radius: 14px;
+  cursor: pointer; font-family: inherit; transition: all .15s;
+  min-width: 72px; border: 2px solid transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 768px) {
+  .queueChip {
+    flex-direction: row; gap: 8px;
+    min-width: 0; padding: 10px 12px;
+    border-radius: 12px; align-items: center;
+  }
+}
+.queueChipNum  { font-family: 'Pacifico', cursive; font-size: .9rem; }
+.queueChipName { font-size: .70rem; font-weight: 900; opacity: .85; }
+.queueChipTime { font-size: .62rem; font-weight: 800; opacity: .7; }
+
+.counts { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+.countChip { padding: 4px 10px; border-radius: 999px; font-size: .70rem; font-weight: 900; }
+@media (min-width: 768px) { .counts { flex-direction: column; gap: 4px; margin-top: 4px; } }
+
+.emptyMsg { text-align: center; padding: 16px 0; color: #8AAF80; font-weight: 800; font-size: .9rem; }
+
+/* ── TICKET AREA ── */
+.ticketArea {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 768px) {
+  .ticketArea {
+    height: calc(100dvh - 60px);
+  }
+}
+
+/* ── TICKET CARD ── */
+.ticket {
+  margin: 12px;
+  border-radius: 20px;
+  background: white;
+  box-shadow: 0 4px 24px rgba(28,45,26,.10);
+  overflow: hidden;
+  padding-bottom: 14px;
+  animation: slideIn .22s ease both;
+}
+@media (min-width: 768px) { .ticket { margin: 16px; } }
+
+.ticketHead {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 12px; padding: 16px 18px;
+}
+.stateBadge { padding: 3px 9px; border-radius: 999px; color: white; font-size: .65rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.timer      { padding: 3px 8px; border-radius: 999px; background: #F3F4F6; color: #6B7280; font-size: .66rem; font-weight: 900; }
+.noteAlert  { margin: 0 14px; padding: 10px 13px; background: #FEF2F2; border-left: 4px solid #F87171; border-radius: 0 10px 10px 0; color: #B91C1C; font-size: .82rem; font-weight: 800; line-height: 1.45; }
+.addressLine { padding: 7px 18px; color: #4A6A3F; font-size: .78rem; font-weight: 700; border-bottom: 1px solid #F3F4F6; }
+
+/* ── ITEMS ── */
+.itemsSection { padding: 12px 14px; display: grid; gap: 10px; }
+.itemCard     { padding: 13px 14px; border-radius: 16px; background: #FAFAF8; border: 1px solid #EEEDE8; transition: opacity .2s; }
+.itemRow      { display: flex; align-items: flex-start; gap: 11px; }
+.itemTitle    { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-size: 1.05rem; }
+.tag          { padding: 2px 7px; border-radius: 999px; background: #EEF5FF; color: #1D4ED8; font-size: .62rem; font-weight: 900; }
+
+/* Checkboxes táctiles grandes para tablet */
+.checkBox   { width: 40px; height: 40px; flex-shrink: 0; border: 2.5px solid #D1D5DB; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; margin-top: 2px; }
+.checkBoxSm { width: 30px; height: 30px; flex-shrink: 0; border: 2px solid #D1D5DB; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; margin-top: 1px; }
+
+.toppingList { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.toppingChip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px 5px 6px; border-radius: 99px; border: 1.5px solid #E5E7EB; background: white; cursor: pointer; font-family: inherit; transition: all .12s; font-size: .76rem; }
+
+.comboBlock   { margin-top: 8px; display: grid; gap: 8px; }
+.comboItem    { background: #FFF8EE; border-radius: 12px; padding: 10px 12px; border: 1px solid #FFE8CC; }
+.comboItemRow { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
+
+/* ── PROGRESO Y BOTÓN PRINCIPAL ── */
+.progress { display: flex; align-items: center; gap: 10px; padding: 10px 16px 4px; }
+.readyBanner { margin: 10px 14px 0; padding: 16px; border-radius: 16px; background: linear-gradient(135deg,#EDFDF2,#D8F3DC); color: #166534; font-weight: 900; font-size: 1rem; text-align: center; border: 1px solid rgba(22,101,52,.14); }
+.mainBtn {
+  display: block; width: calc(100% - 28px);
+  margin: 12px 14px 0; min-height: 60px;
+  border: none; border-radius: 18px;
+  font-size: 1.05rem; font-weight: 900;
+  font-family: inherit; cursor: pointer;
+  transition: opacity .15s, transform .12s, box-shadow .14s;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+}
+.mainBtn:active { transform: scale(0.98); box-shadow: 0 2px 8px rgba(0,0,0,0.14); }
+
+.hintMsg { text-align: center; padding: 60px 24px; color: #8AAF80; font-weight: 800; font-size: 1rem; }

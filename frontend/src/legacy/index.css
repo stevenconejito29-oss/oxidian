@@ -1,0 +1,67 @@
+/* ═══════════════════════════════════════════════════════════
+   CarmoCream — GLOBAL BASE  v12
+   Fuentes: Pacifico (display) + Nunito (cuerpo) = igual que Admin
+   Paleta: blanco · rosa pastel · verde · dorado — sin negro
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Pacifico&family=Nunito:wght@500;600;700;800;900&family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Syne:wght@600;700;800&display=swap');
+
+@import './variables.css';
+@import './solid-obsidian.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  height: -webkit-fill-available;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--brand-font-body);
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
+  background: var(--brand-surface);
+  color: var(--brand-text);
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  overflow-x: hidden;
+}
+
+input, textarea, select {
+  font-size: 16px !important;
+  font-family: inherit;
+}
+img  { max-width: 100%; height: auto; display: block; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; user-select: none; touch-action: manipulation; }
+a    { text-decoration: none; color: inherit; }
+
+/* ── Paleta global CarmoCream ── */
+:root {
+  --bg:        color-mix(in srgb, var(--brand-surface) 88%, white 12%);
+  --white:     #FFFFFF;
+  --rose:      color-mix(in srgb, var(--brand-accent) 60%, white 40%);
+  --rose-dk:   var(--brand-accent);
+  --rose-lt:   color-mix(in srgb, var(--brand-accent) 18%, white 82%);
+  --green:     var(--brand-primary);
+  --green-dk:  color-mix(in srgb, var(--brand-primary) 72%, black 28%);
+  --green-lt:  color-mix(in srgb, var(--brand-primary) 18%, white 82%);
+  --green-mid: var(--brand-secondary);
+  --text:      var(--brand-text);
+  --text2:     color-mix(in srgb, var(--brand-text) 62%, transparent 38%);
+  --text3:     color-mix(in srgb, var(--brand-text) 40%, transparent 60%);
+  --bd:        color-mix(in srgb, var(--brand-text) 10%, transparent 90%);
+  --bd-rose:   color-mix(in srgb, var(--brand-accent) 45%, transparent 55%);
+
+  --sat: env(safe-area-inset-top,    0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left,   0px);
+  --sar: env(safe-area-inset-right,  0px);
+}

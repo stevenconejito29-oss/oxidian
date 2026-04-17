@@ -1,0 +1,380 @@
+.shell {
+  min-height: 100dvh;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(183, 75, 50, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(240, 198, 110, 0.18), transparent 30%),
+    linear-gradient(180deg, #f6f0e5 0%, #efe5d5 100%);
+  color: #1e293b;
+}
+
+.frame {
+  width: min(1320px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 22px;
+}
+
+.hero {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  align-items: end;
+  padding: 28px;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.97), rgba(23, 64, 67, 0.9)),
+    #0f172a;
+  color: #f8fafc;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+}
+
+.heroMain {
+  display: grid;
+  gap: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.68);
+}
+
+.title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(2rem, 4vw, 3.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.description {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.heroAside {
+  display: grid;
+  gap: 12px;
+  justify-items: stretch;
+}
+
+.signalCard {
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.08);
+  border: 1px solid rgba(248, 250, 252, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.signalLabel {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(248, 250, 252, 0.62);
+}
+
+.signalValue {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.gridTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel {
+  padding: 22px;
+  border-radius: 24px;
+  background: rgba(255, 252, 246, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 18px 44px rgba(148, 163, 184, 0.12);
+}
+
+.panelDark {
+  background: linear-gradient(180deg, #102224 0%, #183235 100%);
+  color: #f8fafc;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panelTitle {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.panelText {
+  margin: 6px 0 0;
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: rgba(30, 41, 59, 0.78);
+}
+
+.panelDark .panelText {
+  color: rgba(248, 250, 252, 0.74);
+}
+
+.stats {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.statCard {
+  padding: 16px;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.statLabel {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.statValue {
+  display: block;
+  margin-top: 10px;
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.statHint {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.listCard {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.listTop {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.listTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.listMeta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button,
+.ghostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 800;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.button {
+  background: linear-gradient(135deg, #b74b32, #d6803b);
+  color: white;
+  box-shadow: 0 18px 28px rgba(183, 75, 50, 0.22);
+}
+
+.ghostButton {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.button:hover,
+.ghostButton:hover {
+  transform: translateY(-1px);
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.formGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px 16px;
+  font: inherit;
+  color: #0f172a;
+  outline: none;
+}
+
+.textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: rgba(183, 75, 50, 0.56);
+  box-shadow: 0 0 0 4px rgba(183, 75, 50, 0.12);
+}
+
+.notice {
+  padding: 14px 16px;
+  border-radius: 18px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.noticeInfo {
+  background: rgba(23, 64, 67, 0.08);
+  color: #174043;
+}
+
+.noticeError {
+  background: rgba(153, 27, 27, 0.08);
+  color: #991b1b;
+}
+
+.noticeSuccess {
+  background: rgba(21, 128, 61, 0.08);
+  color: #166534;
+}
+
+.quickLinks {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.quickLinkCard {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.88));
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  text-decoration: none;
+  color: inherit;
+}
+
+.quickLinkEmoji {
+  font-size: 1.6rem;
+}
+
+.quickLinkTitle {
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.quickLinkText {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+@media (max-width: 920px) {
+  .shell {
+    padding: 18px;
+  }
+
+  .hero,
+  .gridTwo,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+}

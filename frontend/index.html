@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <!-- VIEWPORT: viewport-fit=cover = contenido hasta bordes físicos -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- No indexar la app -->
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- theme-color: verde CarmoCream para que combine con PWAGate -->
+    <meta name="theme-color" content="#1A4733" />
+    <meta name="theme-color" content="#1A4733" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#1A4733" media="(prefers-color-scheme: light)" />
+    <!-- Staff PWA: el manifest se inyecta solo en /pedidos y /repartidor -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Oxidian" />
+    <!-- Apple touch icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/logo.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/logo.png" />
+    <title>Oxidian</title>
+    <!-- Fuentes plantillas: Brutalista · Luxury · Retro Neon · Zen -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;600;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,600&family=Jost:wght@300;400;500&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,400&family=Righteous&family=Nunito:wght@300;400;600;700;900&family=VT323&family=Noto+Serif+JP:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <!-- Splash screens iOS -->
+    <link rel="apple-touch-startup-image" href="/logo.png" />
+    <style>
+      /* FOUC — fondo verde CarmoCream desde el primer frame, sin destello blanco */
+      html, body {
+        background: #1A4733;
+        margin: 0;
+        color: #F5F5F5;
+        overflow-x: hidden;
+        min-height: 100dvh;
+      }
+      * { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+      html { overscroll-behavior: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

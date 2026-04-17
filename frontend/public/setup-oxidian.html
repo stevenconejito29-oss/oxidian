@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OXIDIAN · Setup contraseña</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:#0F172A;color:white;min-height:100vh;display:flex;
+      align-items:center;justify-content:center;padding:24px}
+    .card{background:rgba(15,23,42,.95);border:1px solid rgba(129,140,248,.3);
+      border-radius:24px;padding:36px;max-width:520px;width:100%;
+      box-shadow:0 32px 80px rgba(2,6,23,.6)}
+    h1{font-size:1.5rem;font-weight:900;background:linear-gradient(90deg,#A5B4FC,#E0E7FF);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+    .sub{color:rgba(226,232,240,.6);font-size:.84rem;margin-bottom:28px;line-height:1.6}
+    label{display:block;font-size:.75rem;font-weight:700;color:rgba(255,255,255,.6);
+      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+    input{width:100%;padding:13px 14px;border-radius:12px;
+      border:1.5px solid rgba(129,140,248,.28);background:rgba(255,255,255,.05);
+      color:white;font-family:inherit;font-size:.9rem;outline:none;margin-bottom:14px}
+    input:focus{border-color:#818CF8}
+    .btn{width:100%;padding:13px;border:none;border-radius:12px;
+      background:linear-gradient(90deg,#4F46E5,#818CF8);color:white;
+      font-weight:900;font-size:1rem;font-family:inherit;cursor:pointer;margin-bottom:10px}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn-ghost{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15)}
+    .result{margin-top:16px;border-radius:14px;padding:16px;font-size:.82rem;
+      line-height:1.7;display:none}
+    .result.ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86EFAC}
+    .result.err{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#FCA5A5}
+    .result.info{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#C7D2FE}
+    code{background:rgba(255,255,255,.1);padding:2px 6px;border-radius:6px;font-size:.78rem}
+    .divider{height:1px;background:rgba(255,255,255,.1);margin:20px 0}
+    .hash-box{word-break:break-all;font-family:monospace;font-size:.72rem;
+      background:rgba(0,0,0,.3);padding:10px;border-radius:8px;margin-top:8px;
+      border:1px solid rgba(255,255,255,.1)}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div style="font-size:2rem;margin-bottom:10px">⬡</div>
+  <h1>OXIDIAN Setup</h1>
+  <div class="sub">
+    Herramienta de configuración inicial. Establece la contraseña maestra y verifica el acceso al super admin.<br>
+    <strong style="color:#FDE68A">Borra este archivo después de usarlo.</strong>
+  </div>
+
+  <div id="step1">
+    <label>URL de Supabase</label>
+    <input id="url" placeholder="https://XXXX.supabase.co" />
+    <label>Service Role Key (Settings → API en Supabase)</label>
+    <input id="key" type="password" placeholder="eyJhbGci..." />
+    <label>Nueva contraseña OXIDIAN (mín. 6 caracteres)</label>
+    <input id="pw" type="password" placeholder="Mi contraseña segura" />
+    <label>Confirmar contraseña</label>
+    <input id="pw2" type="password" placeholder="Repite la contraseña" />
+    <button class="btn" onclick="setPassword()">Establecer contraseña OXIDIAN</button>
+    <button class="btn btn-ghost" onclick="checkPassword()">Solo verificar acceso (sin cambiar)</button>
+  </div>
+
+  <div id="result" class="result"></div>
+
+  <div class="divider"></div>
+  <div style="font-size:.78rem;color:rgba(255,255,255,.4);line-height:1.7">
+    Este archivo opera directamente contra Supabase con la service_role key.<br>
+    Requiere que las migraciones multitienda estén aplicadas.<br>
+    URL del super admin: <code>/oxidian</code>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL_KEY = 'ox_setup_url'
+const SUPABASE_KEY_KEY = 'ox_setup_key'
+
+// Auto-rellenar desde sessionStorage si ya se usó antes
+window.addEventListener('load', () => {
+  document.getElementById('url').value = sessionStorage.getItem(SUPABASE_URL_KEY) || ''
+})
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
+
+function show(msg, type='info') {
+  const el = document.getElementById('result')
+  el.innerHTML = msg
+  el.className = `result ${type}`
+  el.style.display = 'block'
+}
+
+async function supabaseRequest(url, key, method, body) {
+  const res = await fetch(`${url}/rest/v1/settings`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': key,
+      'Authorization': `Bearer ${key}`,
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`)
+  return data
+}
+
+async function setPassword() {
+  const url = document.getElementById('url').value.trim().replace(/\/$/, '')
+  const key = document.getElementById('key').value.trim()
+  const pw = document.getElementById('pw').value
+  const pw2 = document.getElementById('pw2').value
+
+  if (!url || !key) return show('❌ Ingresa la URL y la service_role key de Supabase.', 'err')
+  if (pw.length < 6) return show('❌ La contraseña debe tener al menos 6 caracteres.', 'err')
+  if (pw !== pw2) return show('❌ Las contraseñas no coinciden.', 'err')
+
+  sessionStorage.setItem(SUPABASE_URL_KEY, url)
+  show('⏳ Calculando hash y guardando...', 'info')
+
+  try {
+    const hash = await sha256(pw)
+    await supabaseRequest(url, key, 'POST', [
+      { key: 'oxidian_admin_password_hash', value: hash }
+    ])
+    show(`
+      ✅ <strong>Contraseña OXIDIAN establecida correctamente.</strong><br><br>
+      Hash guardado en <code>settings.oxidian_admin_password_hash</code><br>
+      <div class="hash-box">${hash}</div><br>
+      Ya puedes acceder en <code>/oxidian</code> con tu nueva contraseña.<br><br>
+      <strong style="color:#FDE68A">⚠️ Elimina este archivo (setup-oxidian.html) por seguridad.</strong>
+    `, 'ok')
+  } catch(e) {
+    show(`❌ Error: ${e.message}<br><br>
+      Verifica que la service_role key sea correcta y que la tabla <code>settings</code>
+      tenga la migración <code>20260405_settings_rls_anon_read.sql</code> aplicada.`, 'err')
+  }
+}
+
+async function checkPassword() {
+  const url = document.getElementById('url').value.trim().replace(/\/$/, '')
+  const key = document.getElementById('key').value.trim()
+  if (!url || !key) return show('❌ Ingresa URL y service_role key para verificar.', 'err')
+
+  sessionStorage.setItem(SUPABASE_URL_KEY, url)
+  show('⏳ Verificando...', 'info')
+  try {
+    const res = await fetch(`${url}/rest/v1/settings?key=eq.oxidian_admin_password_hash&select=key,value`, {
+      headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+    })
+    const data = await res.json()
+    if (!data?.length) {
+      show(`⚠️ <strong>No existe oxidian_admin_password_hash en settings.</strong><br><br>
+        Usa el botón "Establecer contraseña" para crearla, o aplica la migración
+        <code>20260405_oxidian_password_and_store_settings_rls.sql</code> en Supabase.`, 'err')
+    } else {
+      const hash = data[0].value
+      show(`✅ <strong>Hash encontrado en Supabase.</strong><br><br>
+        <div class="hash-box">${hash}</div><br>
+        Si el login sigue fallando, el problema es que el frontend (anon key) no puede leer
+        la tabla <code>settings</code>. Aplica la migración
+        <code>20260405_settings_rls_anon_read.sql</code>.`, 'ok')
+    }
+  } catch(e) {
+    show(`❌ Error al verificar: ${e.message}`, 'err')
+  }
+}
+</script>
+</body>
+</html>

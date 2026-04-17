@@ -1,0 +1,159 @@
+/**
+ * solid-obsidian.css — CarmoCream
+ * ─────────────────────────────────────────────────────────────
+ * Variables CSS del sistema Solid Obsidian.
+ * Importar en index.css o en cada panel de staff que lo necesite.
+ * Diseño alto contraste para uso en cocina (distancia) y móvil.
+ * ─────────────────────────────────────────────────────────────
+ */
+
+:root {
+  /* ── Paleta Obsidian ─────────────────────────────────────── */
+  --obs-bg:          #0D0D0D;
+  --obs-surface:     #161616;
+  --obs-surface-2:   #1C1C1C;
+  --obs-border:      rgba(255,255,255,0.07);
+  --obs-border-mid:  rgba(255,255,255,0.13);
+
+  /* ── Texto ───────────────────────────────────────────────── */
+  --obs-text:        #F5F5F5;
+  --obs-text-sub:    rgba(255,255,255,0.55);
+  --obs-text-muted:  rgba(255,255,255,0.28);
+
+  /* ── Acentos ─────────────────────────────────────────────── */
+  --obs-gold:        #D4AF37;
+  --obs-gold-glow:   rgba(212,175,55,0.18);
+  --obs-green:       #2D6A4F;
+  --obs-green-light: #52B788;
+  --obs-red:         #DC2626;
+  --obs-blue:        #1D4ED8;
+
+  /* ── Status ──────────────────────────────────────────────── */
+  --status-pending:   #C05621;
+  --status-preparing: #1D4ED8;
+  --status-ready:     #166534;
+  --status-delivering:#0891B2;
+  --status-delivered: #6B7280;
+  --status-cancelled: #DC2626;
+
+  /* ── Espaciado ───────────────────────────────────────────── */
+  --r-sm:  8px;
+  --r-md:  14px;
+  --r-lg:  20px;
+  --r-xl:  28px;
+
+  /* ── Sombras ─────────────────────────────────────────────── */
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.4);
+  --shadow-md:  0 8px 24px rgba(0,0,0,0.5);
+  --shadow-lg:  0 20px 60px rgba(0,0,0,0.6);
+}
+
+/* ── Utility classes para staff panels ───────────────────────── */
+.obs-page {
+  background: var(--obs-bg);
+  color:       var(--obs-text);
+  min-height:  100dvh;
+  font-family: 'Nunito', sans-serif;
+}
+
+.obs-card {
+  background:    var(--obs-surface);
+  border:        1.5px solid var(--obs-border);
+  border-radius: var(--r-lg);
+  padding:       16px;
+  box-shadow:    var(--shadow-sm);
+}
+
+.obs-badge {
+  display:        inline-flex;
+  align-items:    center;
+  gap:            5px;
+  padding:        3px 10px;
+  border-radius:  50px;
+  font-size:      .68rem;
+  font-weight:    900;
+  letter-spacing: .05em;
+}
+
+.obs-btn {
+  display:        inline-flex;
+  align-items:    center;
+  justify-content:center;
+  gap:            6px;
+  padding:        12px 20px;
+  border:         none;
+  border-radius:  var(--r-md);
+  font-family:    inherit;
+  font-weight:    900;
+  font-size:      .9rem;
+  cursor:         pointer;
+  transition:     transform .15s, opacity .15s;
+}
+.obs-btn:active { transform: scale(0.96); }
+
+.obs-btn-primary {
+  background: linear-gradient(135deg, var(--obs-green), #40916C);
+  color:      #fff;
+  box-shadow: 0 4px 16px rgba(45,106,79,.35);
+}
+
+.obs-btn-gold {
+  background: linear-gradient(135deg, var(--obs-gold), #B8960C);
+  color:      #0D0D0D;
+  box-shadow: 0 4px 16px rgba(212,175,55,.30);
+}
+
+.obs-btn-danger {
+  background: rgba(220,38,38,.15);
+  color:      #FCA5A5;
+  border:     1.5px solid rgba(220,38,38,.3);
+}
+
+.obs-input {
+  background:    rgba(255,255,255,.06);
+  border:        1.5px solid var(--obs-border-mid);
+  border-radius: var(--r-sm);
+  color:         var(--obs-text);
+  font-family:   inherit;
+  font-weight:   700;
+  padding:       10px 14px;
+  outline:       none;
+  width:         100%;
+  box-sizing:    border-box;
+  transition:    border-color .2s;
+}
+.obs-input:focus { border-color: var(--obs-gold); }
+.obs-input::placeholder { color: var(--obs-text-muted); }
+
+/* ── Animaciones compartidas ─────────────────────────────────── */
+@keyframes obs-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes obs-pulse-glow {
+  0%, 100% { box-shadow: none; }
+  50%       { box-shadow: 0 0 0 4px rgba(212,175,55,.18); }
+}
+@keyframes obs-realtime-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .3; }
+}
+
+.obs-animate-in     { animation: obs-fade-up .35s cubic-bezier(0.16,1,0.3,1); }
+.obs-realtime-dot   { animation: obs-realtime-dot 2s ease infinite; }
+.obs-pulse          { animation: obs-pulse-glow 2.5s ease infinite; }
+
+/* ── Realtime indicator ──────────────────────────────────────── */
+.obs-realtime-badge {
+  display:        inline-flex;
+  align-items:    center;
+  gap:            6px;
+  font-size:      .65rem;
+  font-weight:    900;
+  color:          #4ADE80;
+  background:     rgba(74,222,128,.1);
+  border:         1px solid rgba(74,222,128,.22);
+  padding:        3px 10px;
+  border-radius:  50px;
+  letter-spacing: .06em;
+}

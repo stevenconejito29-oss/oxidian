@@ -1,0 +1,104 @@
+-- ============================================================
+-- OXIDIAN / CARMOCREAM
+-- Canonical database schema index
+-- Fecha de consolidacion: 2026-04-17
+-- ============================================================
+--
+-- Este archivo funciona como punto canonico de referencia del esquema
+-- actual mientras la ejecucion operativa sigue dividida en migraciones.
+--
+-- Fuente vigente observada en este workspace:
+--   1. supabase/migrations/0001_hierarchy_foundation.sql
+--   2. supabase/migrations/0002_chatbot_authorization.sql
+--   3. supabase/migrations/0003_jwt_claims_hook.sql
+--   4. supabase/migrations/0004_fix_42803.sql
+--   5. supabase/migrations/0004_patch_functions.sql
+--   6. supabase/migrations/RESET_COMPLETE.sql
+--
+-- Regla de trabajo:
+--   - cualquier nueva funcionalidad con datos debe reflejarse aqui primero
+--   - luego debe aterrizarse en una migracion incremental dentro de /supabase
+--
+-- Estado actual verificado:
+--   - existe la jerarquia tenant -> store -> branch
+--   - existe user_memberships para control de acceso jerarquico
+--   - existen funciones para claims JWT y autorizacion por alcance
+--   - el proyecto remoto de Supabase no parece tener activadas todas las
+--     policies/grants esperadas, aunque las migraciones locales si las definen
+--
+-- Entidades base esperadas
+-- ============================================================
+--
+-- public.tenants
+-- public.stores
+-- public.branches
+-- public.user_memberships
+-- public.store_templates
+-- public.account_activations
+-- public.chatbot_portable_pings
+-- public.chatbot_authorization_log
+--
+-- Tablas de dominio con scope esperado
+-- ============================================================
+--
+-- settings
+-- config_tienda
+-- store_settings
+-- store_process_profiles
+-- store_runtime_profiles
+-- products
+-- combos
+-- toppings
+-- topping_categories
+-- orders
+-- stock_items
+-- stock_item_products
+-- coupons
+-- affiliates
+-- affiliate_applications
+-- staff_users
+-- cash_entries
+-- daily_sales_summary
+-- loyalty_rewards
+-- reviews
+-- visitors
+-- chatbot_notifications
+-- chatbot_conversations
+-- oxidian_checkout_sessions
+-- domain_mappings
+-- store_niche_templates
+--
+-- Funciones de seguridad esperadas
+-- ============================================================
+--
+-- public.current_request_claim(text)
+-- public.current_request_app_role()
+-- public.current_request_tenant_id()
+-- public.current_request_store_id()
+-- public.current_request_branch_id()
+-- public.is_super_admin()
+-- public.can_access_scope(uuid, text, uuid)
+-- public.custom_jwt_claims(jsonb)
+-- public.make_super_admin(text)
+-- public.invite_member(...)
+-- public.revoke_member(...)
+-- public.get_my_membership()
+--
+-- Politicas RLS esperadas
+-- ============================================================
+--
+-- tenants: super admin full access + lectura por tenant propio
+-- stores: lectura publica + gestion por alcance
+-- branches: lectura publica + gestion por alcance
+-- user_memberships: super admin full access + tenant owner manage
+-- store_templates: lectura publica de templates activos
+-- store_plans: lectura publica de planes activos
+--
+-- Nota operativa importante
+-- ============================================================
+--
+-- La fuente mas completa observada hoy para reconstruir el esquema es:
+--   supabase/migrations/RESET_COMPLETE.sql
+--
+-- Los archivos 0004_fix_42803.sql y 0004_patch_functions.sql deben revisarse
+-- junto con RESET_COMPLETE.sql antes de ejecutar cambios en un entorno nuevo.

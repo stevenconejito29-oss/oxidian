@@ -1,0 +1,10 @@
+:root {
+  --brand-primary: #2D6A4F;
+  --brand-secondary: #40916C;
+  --brand-accent: #E8607A;
+  --brand-surface: #FFF5EE;
+  --brand-text: #2D1F1A;
+  --brand-font-display: 'Pacifico', cursive;
+  --brand-font-body: 'Nunito', system-ui, sans-serif;
+  --brand-button-radius: 14px;
+}
