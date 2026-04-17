@@ -6,25 +6,26 @@
 
 ## Estado actual
 
-- Segunda auditoria completada sobre `git`, `vercel`, `frontend`, `backend` y `supabase`.
+- Verificacion operativa completada sobre `git`, `vercel`, `frontend`, `backend` y `supabase`.
 - El repo local esta enlazado a `origin = https://github.com/stevenconejito29-oss/oxidian.git`.
-- `main` local y `origin/main` estan sincronizados en el commit `bdd501f`.
-- El remoto `https://github.com/stevenconejito29-oss/oxidian2.git` no existe o no es accesible actualmente.
-- El arbol SaaS local fue preparado para ser versionado completo en `oxidian`.
-- El proyecto enlazado en Vercel desde `frontend/.vercel/project.json` fue realineado a `oxidian`.
-- Se verifico un deploy productivo exitoso en Vercel sobre `oxidian`.
+- `main` local y `origin/main` quedaron sincronizados en el commit `46509b1`.
+- El proyecto Vercel activo es `oxidian` (`prj_Oq80no8rgJItzeJGUZtD63zhzqM6`).
+- El proyecto `oxidian` ya esta conectado al repo GitHub `stevenconejito29-oss/oxidian`.
+- El `Root Directory` remoto de Vercel fue corregido a `frontend`.
+- Se verifico un deployment productivo `READY` via Git/deploy hook sobre el commit `46509b1`.
 
 ## Hallazgos de arquitectura y despliegue
 
 - El frontend Vite si compila y despliega en Vercel.
-- El despliegue verificado ya corresponde al proyecto Vercel `oxidian`, alineado con el repo Git actual `oxidian`.
+- El despliegue verificado corresponde al proyecto Vercel `oxidian`, alineado con el repo Git actual `oxidian`.
 - El proyecto de Vercel actual esta configurado como frontend-only; hoy no hay evidencia de que el backend Flask se despliegue en ese mismo proyecto.
 - En la raiz existe `api/` con funciones Node para Vercel, pero el flujo operativo actual de deploy se esta ejecutando desde `frontend`, por lo que esa capa no forma parte del deploy verificado.
 - Existen dos configuraciones de Vercel:
   - `frontend/vercel.json`: coherente con un deploy Vite estatico.
   - `vercel.json` en raiz: preparado para importar el repo completo y compilar `frontend/dist`.
-- El proyecto Vercel no esta conectado a un repositorio Git, por eso hoy el deploy automatico por push no esta garantizado.
-- El deploy hook compartido por el usuario pertenece al proyecto `oxidian`; el enlace local fue ajustado para apuntar a ese mismo proyecto.
+- El error `FLASK_ENTRYPOINT_NOT_FOUND` ocurria porque el proyecto Git de Vercel estaba construyendo desde `.` y detectaba `backend/` como servicio Flask.
+- La correccion efectiva fue cambiar `Root Directory` a `frontend`, siguiendo la documentacion oficial de Vercel para monorepos.
+- El deploy hook compartido por el usuario pertenece al proyecto `oxidian`; se uso para forzar un redeploy del mismo commit despues de corregir `Root Directory`.
 - Se corrigio `vercel.json` de raiz eliminando un BOM UTF-8 que hacia que Vercel lo reportara como JSON invalido.
 - La documentacion oficial de Vercel indica que para desplegar frontend + backend como un solo proyecto se necesita `experimentalServices` y framework `Services`; hoy el camino estable del proyecto sigue siendo desplegar `frontend` como raiz del proyecto Vercel.
 
@@ -32,7 +33,7 @@
 
 - `frontend/.env.production` estaba trackeado en git con secretos reales.
 - `test_oxidian_db.py` tenia claves de Supabase embebidas en el codigo.
-- Se cargaron variables criticas en el entorno `Production` del proyecto `oxidian2` en Vercel para reducir dependencia de secretos dentro del repo.
+- Se cargaron variables criticas en el proyecto `oxidian` de Vercel para reducir dependencia de secretos dentro del repo.
 - Las variables siguen cargadas solo en `Production`; no existe configuracion equivalente visible para `Preview`.
 - `frontend/.gitignore` fue endurecido para excluir `.env*`, `dist/`, `node_modules/` y logs al desplegar desde esa carpeta.
 - Sigue siendo obligatorio rotar las claves de Supabase ya expuestas en historial de git y en deployments previos.
@@ -54,12 +55,11 @@
 
 ## Pendientes inmediatos
 
-- Subir realmente este arbol SaaS al repo correcto o corregir `origin` hacia el repositorio deseado.
 - Consolidar una estrategia unica de despliegue Vercel:
-  - `frontend` estatico solamente
-  - o raiz con `frontend + api`
-- Conectar el proyecto Vercel `oxidian2` a GitHub si se quiere deploy automatico por push.
+  - mantener `frontend` como proyecto actual estable
+  - o redisenar a `Services` si se quiere desplegar backend y frontend juntos desde raiz
 - Ejecutar y validar en Supabase el esquema canonico real (`RESET_COMPLETE.sql` y parches faltantes).
 - Revisar grants/policies de `store_templates`, `tenants` y tablas jerarquicas.
 - Rotar `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` y cualquier secreto comprometido.
 - Sacar definitivamente `frontend/.env.production` del control de versiones mediante commit.
+- Replicar variables criticas tambien en `Preview` si se quiere validar flujos no productivos en Vercel.
