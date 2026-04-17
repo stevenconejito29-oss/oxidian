@@ -25,6 +25,8 @@
   - `vercel.json` en raiz: preparado para importar el repo completo y compilar `frontend/dist`.
 - El proyecto Vercel no esta conectado a un repositorio Git, por eso hoy el deploy automatico por push no esta garantizado.
 - El deploy hook compartido por el usuario pertenece al proyecto `oxidian`; el enlace local fue ajustado para apuntar a ese mismo proyecto.
+- Se corrigio `vercel.json` de raiz eliminando un BOM UTF-8 que hacia que Vercel lo reportara como JSON invalido.
+- La documentacion oficial de Vercel indica que para desplegar frontend + backend como un solo proyecto se necesita `experimentalServices` y framework `Services`; hoy el camino estable del proyecto sigue siendo desplegar `frontend` como raiz del proyecto Vercel.
 
 ## Hallazgos de seguridad
 
