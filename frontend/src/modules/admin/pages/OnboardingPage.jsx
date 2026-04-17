@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../legacy/lib/supabase'
+import { useAuth } from '../../../core/providers/AuthProvider'
 import {
   Actions, Button, Field, Form, FormGrid,
   GhostButton, Hero, Notice, Shell, controlDeckStyles,
@@ -290,6 +291,7 @@ function DoneStep({ storeId, branchId, tenantId, onGoToDashboard }) {
 // ─── Página principal ──────────────────────────────────────────────
 export default function OnboardingPage() {
   const navigate = useNavigate()
+  const { session } = useAuth()
   const [step, setStep] = React.useState('welcome')
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState('')
@@ -325,8 +327,7 @@ export default function OnboardingPage() {
   async function saveTenant() {
     setSaving(true); setError('')
     try {
-      const { data: session } = await supabase.auth.getSession()
-      const userId = session?.session?.user?.id
+      const userId = session?.user?.id
 
       const { data, error: err } = await supabase.from('tenants').insert({
         slug: tenant.slug,

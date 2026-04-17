@@ -1,5 +1,10 @@
 import React from 'react'
 import { supabase } from '../../legacy/lib/supabase'
+import {
+  loadStoredSession,
+  clearStoredSession,
+  STORAGE_KEYS,
+} from '../../legacy/lib/appSession'
 
 export const AuthContext = React.createContext(null)
 
@@ -8,7 +13,30 @@ export function useAuth() {
 }
 
 /**
- * AuthProvider — Gestiona sesión Supabase + membresía del usuario.
+ * Construye un objeto session-like a partir del payload almacenado en appSession.
+ * Compatible con la forma que usaba supabase.auth.getSession().
+ */
+function buildSessionFromStored(stored) {
+  if (!stored?.supabase_access_token) return null
+  return {
+    access_token: stored.supabase_access_token,
+    user: stored.user || null,
+  }
+}
+
+/**
+ * Lee la sesión activa de cualquiera de los storage keys registrados.
+ */
+function readActiveStoredSession() {
+  for (const key of Object.values(STORAGE_KEYS)) {
+    const stored = loadStoredSession(key)
+    if (stored?.supabase_access_token) return { stored, key }
+  }
+  return null
+}
+
+/**
+ * AuthProvider — Gestiona sesión (modo accessToken externo) + membresía del usuario.
  * Expone: session, user, membership (role, tenant_id, store_id, branch_id), loading, signOut
  */
 export function AuthProvider({ children }) {
@@ -34,21 +62,30 @@ export function AuthProvider({ children }) {
   }
 
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s)
-      loadMembership(s?.user?.id).finally(() => setLoading(false))
-    })
+    // En modo accessToken el cliente no gestiona sesión internamente;
+    // la leemos desde nuestro propio storage (appSession).
+    const active = readActiveStoredSession()
+    const s = active ? buildSessionFromStored(active.stored) : null
+    setSession(s)
+    loadMembership(s?.user?.id).finally(() => setLoading(false))
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-      loadMembership(s?.user?.id)
-    })
-
-    return () => subscription.unsubscribe()
+    // Detectar cambios de storage entre tabs / ventanas
+    function onStorage(e) {
+      if (!Object.values(STORAGE_KEYS).includes(e.key)) return
+      const active2 = readActiveStoredSession()
+      const s2 = active2 ? buildSessionFromStored(active2.stored) : null
+      setSession(s2)
+      loadMembership(s2?.user?.id)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   async function signOut() {
-    await supabase.auth.signOut()
+    // Limpiar todos los storage keys propios
+    for (const key of Object.values(STORAGE_KEYS)) {
+      clearStoredSession(key)
+    }
     setSession(null)
     setMembership(null)
   }

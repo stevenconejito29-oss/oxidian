@@ -1,5 +1,6 @@
 import React from 'react'
 import { supabase } from '../../../legacy/lib/supabase'
+import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
 import { useAuth } from '../../../core/providers/AuthProvider'
 import {
   Actions, BadgeRow, Button, Field, Form, FormGrid,
@@ -10,8 +11,7 @@ import {
 // ─── API helper ───────────────────────────────────────────────────────────────
 
 const API = async (method, path, body) => {
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token || ''
+  const token = readCurrentSupabaseAccessToken()
   const res = await fetch(`/branch${path}`, {
     method,
     headers: {

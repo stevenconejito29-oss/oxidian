@@ -1,5 +1,5 @@
 import React from 'react'
-import { supabase } from '../../../legacy/lib/supabase'
+import { useAuth } from '../../../core/providers/AuthProvider'
 import {
   Actions, Button, GhostButton, Grid,
   Notice, Panel, Stats,
@@ -10,6 +10,7 @@ import {
  * el chatbot portable por branch. Se incluye en SuperAdminPage.
  */
 export default function ChatbotAuthManager() {
+  const { session } = useAuth()
   const [branches, setBranches] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [busy, setBusy] = React.useState(null)
@@ -18,7 +19,6 @@ export default function ChatbotAuthManager() {
 
   const load = async () => {
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token || ''
     const res = await fetch('/admin/chatbot/authorizations', {
       headers: { Authorization: `Bearer ${token}` },
@@ -31,7 +31,6 @@ export default function ChatbotAuthManager() {
   React.useEffect(() => { load() }, [])
 
   async function callAction(path, method = 'POST', body = {}) {
-    const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token || ''
     const res = await fetch(path, {
       method,
@@ -75,7 +74,6 @@ export default function ChatbotAuthManager() {
   }
 
   async function downloadPortable(branchId) {
-    const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token || ''
     const link = document.createElement('a')
     link.href = `/admin/chatbot/download/${branchId}?token=${token}`
