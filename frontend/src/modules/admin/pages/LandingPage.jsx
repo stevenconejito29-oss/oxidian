@@ -45,7 +45,7 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated, role, loading } = useAuth()
 
-  // Usuarios ya autenticados no deben ver el landing — mandarlos a su panel
+  // Usuario autenticado con rol válido → redirigir a su panel
   if (!loading && isAuthenticated && role !== 'anonymous') {
     return <Navigate to={ROLE_HOME[role] || '/tenant/admin'} replace />
   }

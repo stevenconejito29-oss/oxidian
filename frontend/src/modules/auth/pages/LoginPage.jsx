@@ -29,8 +29,9 @@ export default function LoginPage() {
   const [success, setSuccess] = React.useState('')
 
   if (loading) return null
-  if (isAuthenticated) {
-    const dest = from || ROLE_HOME[role] || '/'
+  if (isAuthenticated && role !== 'anonymous') {
+    // Super admin siempre va a /admin, sin importar from dónde venía
+    const dest = ROLE_HOME[role] || '/'
     return <Navigate to={dest} replace />
   }
 

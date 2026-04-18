@@ -23,29 +23,28 @@ function readActiveStoredSession() {
   return null
 }
 
+// Jerarquía de roles: índice 0 = mayor privilegio
+const ROLE_PRIORITY = [
+  'super_admin',
+  'tenant_owner',
+  'tenant_admin',
+  'store_admin',
+  'store_operator',
+  'branch_manager',
+  'cashier',
+  'kitchen',
+  'rider',
+]
+
 export function AuthProvider({ children }) {
   const [session,    setSession]    = React.useState(null)
   const [membership, setMembership] = React.useState(null)
   const [loading,    setLoading]    = React.useState(true)
 
-  // Orden de prioridad de roles: el más alto gana
-  const ROLE_PRIORITY = [
-    'super_admin',
-    'tenant_owner',
-    'tenant_admin',
-    'store_admin',
-    'store_operator',
-    'branch_manager',
-    'cashier',
-    'kitchen',
-    'rider',
-  ]
-
-  // ── Carga la membresía usando supabaseAuth (cliente nativo con sesión real)
-  async function loadMembership(userId, accessToken) {
+  // ── Carga TODAS las membresías activas y elige la de mayor jerarquía
+  async function loadMembership(userId) {
     if (!userId) { setMembership(null); return }
     try {
-      // Traemos TODAS las membresías activas y elegimos la de mayor jerarquía
       const { data, error } = await supabaseAuth
         .from('user_memberships')
         .select('role, tenant_id, store_id, branch_id, is_active, metadata')
@@ -63,14 +62,15 @@ export function AuthProvider({ children }) {
         return
       }
 
-      // Seleccionar la membresía con el rol de mayor jerarquía
-      const best = data.sort((a, b) => {
+      // Ordenar por jerarquía y quedarse con la de mayor rango
+      const sorted = [...data].sort((a, b) => {
         const ai = ROLE_PRIORITY.indexOf(a.role)
         const bi = ROLE_PRIORITY.indexOf(b.role)
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-      })[0]
+      })
 
-      setMembership(best)
+      console.log('[AuthProvider] rol resuelto:', sorted[0].role)
+      setMembership(sorted[0])
     } catch (e) {
       console.warn('[AuthProvider] loadMembership exception:', e)
       setMembership(null)
@@ -86,7 +86,6 @@ export function AuthProvider({ children }) {
         if (mounted) { setSession(null); setMembership(null); setLoading(false) }
         return
       }
-      // Persistir en appSession para compatibilidad con el cliente legacy
       persistStoredSession(STORAGE_KEYS.admin, {
         user: s.user,
         supabase_access_token: s.access_token,
@@ -95,9 +94,7 @@ export function AuthProvider({ children }) {
           : null,
         _source: 'supabaseAuth',
       })
-      // CRÍTICO: cargar membership ANTES de setSession
-      // Si setSession va primero, React renderiza isAuthenticated=true con role='anonymous'
-      // y el LoginPage redirige a '/' antes de que el role esté listo
+      // CRÍTICO: cargar membership ANTES de setSession para tener el role listo
       await loadMembership(s.user.id)
       if (mounted) { setSession(s); setLoading(false) }
     }
@@ -110,37 +107,31 @@ export function AuthProvider({ children }) {
     }
 
     async function init() {
-      // 1. ¿Hay sesión nativa de Supabase Auth?
       const { data: { session: s } } = await supabaseAuth.auth.getSession()
       if (!mounted) return
       if (s?.user?.id) {
         await applyNativeSession(s)
         return
       }
-      // 2. ¿Hay sesión legacy de staff por PIN?
       applyLegacySession()
     }
 
     init()
 
-    // Escuchar cambios de sesión nativa (login, logout, refresh de token)
     const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, s) => {
       if (!mounted) return
       if (!s) {
-        // Logout: limpiar todo
         const current = loadStoredSession(STORAGE_KEYS.admin)
         if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
         if (mounted) { setSession(null); setMembership(null) }
         return
       }
-      // Nueva sesión — usar setTimeout para no bloquear el event loop de Supabase
       window.setTimeout(() => {
         if (!mounted) return
         applyNativeSession(s)
       }, 0)
     })
 
-    // Escuchar cambios de appSession entre tabs (staff PIN)
     function onStorage(e) {
       if (!Object.values(STORAGE_KEYS).includes(e.key)) return
       applyLegacySession()
