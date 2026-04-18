@@ -1,6 +1,19 @@
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../../legacy/lib/supabase'
+import { useAuth } from '../../../core/providers/AuthProvider'
+
+const ROLE_HOME = {
+  super_admin:    '/admin',
+  tenant_owner:   '/tenant/admin',
+  tenant_admin:   '/tenant/admin',
+  store_admin:    '/branch/admin',
+  store_operator: '/branch/admin',
+  branch_manager: '/branch/admin',
+  kitchen:        '/branch/kitchen',
+  rider:          '/branch/riders',
+  cashier:        '/branch/admin',
+}
 
 const FEATURES = [
   { icon:'🏪', title:'Multi-tienda', desc:'Un dueño puede tener varias tiendas con nichos distintos desde una sola cuenta.' },
@@ -30,6 +43,13 @@ const inp = {
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const { isAuthenticated, role, loading } = useAuth()
+
+  // Usuarios ya autenticados no deben ver el landing — mandarlos a su panel
+  if (!loading && isAuthenticated && role !== 'anonymous') {
+    return <Navigate to={ROLE_HOME[role] || '/tenant/admin'} replace />
+  }
+
   const [form, setForm] = React.useState({
     full_name:'', email:'', phone:'', business_name:'', business_niche:'', city:'', message:''
   })

@@ -67,16 +67,19 @@ export function AuthProvider({ children }) {
     async function applySession(nextSession) {
       if (nextSession?.user?.id) {
         persistNativeSession(nextSession)
-        setSession(nextSession)
+        // CRÍTICO: cargar membership ANTES de exponer la sesión.
+        // Si se hace setSession primero, React re-renderiza con
+        // isAuthenticated=true pero role='anonymous' → redirect a '/'.
         await loadMembership(nextSession.user.id)
+        if (mounted) setSession(nextSession)
         if (mounted) setLoading(false)
         return
       }
 
       const active = readActiveStoredSession()
       const legacy = active ? buildSessionFromStored(active.stored) : null
-      setSession(legacy)
       await loadMembership(legacy?.user?.id)
+      if (mounted) setSession(legacy)
       if (mounted) setLoading(false)
     }
 
