@@ -1,8 +1,9 @@
 import React from 'react'
-import { supabase } from '../../legacy/lib/supabase'
+import { supabase, supabaseAuth } from '../../legacy/lib/supabase'
 import {
   loadStoredSession,
   clearStoredSession,
+  persistStoredSession,
   STORAGE_KEYS,
 } from '../../legacy/lib/appSession'
 
@@ -20,6 +21,25 @@ function readActiveStoredSession() {
     if (stored?.supabase_access_token) return { stored, key }
   }
   return null
+}
+
+function persistNativeSession(session) {
+  if (!session?.access_token) return
+  const current = loadStoredSession(STORAGE_KEYS.admin) || {}
+  persistStoredSession(STORAGE_KEYS.admin, {
+    ...current,
+    user: session.user || current.user || null,
+    auth_expires_at: session.expires_at
+      ? new Date(session.expires_at * 1000).toISOString()
+      : current.auth_expires_at || null,
+    supabase_access_token: session.access_token,
+    _source: 'supabaseAuth',
+  })
+}
+
+function clearNativeSessionMirror() {
+  const current = loadStoredSession(STORAGE_KEYS.admin)
+  if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
 }
 
 export function AuthProvider({ children }) {
@@ -44,32 +64,39 @@ export function AuthProvider({ children }) {
 
   React.useEffect(() => {
     let mounted = true
-    async function init() {
-      // 1. Supabase native auth (admin / tenant / store roles)
-      const { data: { session: s } } = await supabase.auth.getSession()
-      if (!mounted) return
-      if (s?.user?.id) {
-        setSession(s)
-        await loadMembership(s.user.id)
-        setLoading(false)
+    async function applySession(nextSession) {
+      if (nextSession?.user?.id) {
+        persistNativeSession(nextSession)
+        setSession(nextSession)
+        await loadMembership(nextSession.user.id)
+        if (mounted) setLoading(false)
         return
       }
-      // 2. Fallback: legacy appSession (kitchen / rider PIN login)
+
       const active = readActiveStoredSession()
       const legacy = active ? buildSessionFromStored(active.stored) : null
       setSession(legacy)
       await loadMembership(legacy?.user?.id)
-      setLoading(false)
+      if (mounted) setLoading(false)
+    }
+
+    async function init() {
+      // 1. Supabase native auth (admin / tenant / store roles)
+      const { data: { session: s } } = await supabaseAuth.auth.getSession()
+      if (!mounted) return
+      await applySession(s)
     }
     init()
 
     // Listen Supabase auth changes (login / logout / token refresh)
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
-      async (_event, s) => {
+    const { data: { subscription: authSub } } = supabaseAuth.auth.onAuthStateChange(
+      (_event, s) => {
         if (!mounted) return
-        setSession(s)
-        await loadMembership(s?.user?.id)
-        setLoading(false)
+        if (!s) clearNativeSessionMirror()
+        window.setTimeout(() => {
+          if (!mounted) return
+          applySession(s)
+        }, 0)
       }
     )
     // Listen legacy appSession changes between tabs
@@ -89,7 +116,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function signOut() {
-    try { await supabase.auth.signOut() } catch {}
+    try { await supabaseAuth.auth.signOut() } catch {}
     for (const key of Object.values(STORAGE_KEYS)) clearStoredSession(key)
     setSession(null); setMembership(null)
   }

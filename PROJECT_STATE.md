@@ -19,6 +19,7 @@
 - El acceso a vistas protegidas sigue dependiendo de filas validas en `public.user_memberships`.
 - Existe un bootstrap SQL local para asignar accesos en una sola corrida: `scripts/bootstrap_access_users.sql`.
 - El bootstrap SQL de accesos ahora autodetecta `tenant`, `store` y `branch` si las referencias de ejemplo no existen.
+- Se separo el cliente de auth (`supabaseAuth`) del cliente scoped por `appSession` para evitar el error de `onAuthStateChange` con `accessToken`.
 
 ## Hallazgos de arquitectura y despliegue
 

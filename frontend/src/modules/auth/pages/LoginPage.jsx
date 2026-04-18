@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
-import { supabase } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../legacy/lib/supabase'
 import { useAuth } from '../../../core/providers/AuthProvider'
 
 const ROLE_HOME = {
@@ -37,7 +37,7 @@ export default function LoginPage() {
   async function handleLogin(e) {
     e.preventDefault()
     setBusy(true); setError(''); setSuccess('')
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    const { error: err } = await supabaseAuth.auth.signInWithPassword({ email: email.trim(), password })
     if (err) { setError(err.message); setBusy(false) }
   }
 
@@ -45,7 +45,7 @@ export default function LoginPage() {
     e.preventDefault()
     if (!email.trim()) { setError('Ingresa tu correo'); return }
     setBusy(true); setError(''); setSuccess('')
-    const { error: err } = await supabase.auth.signInWithOtp({
+    const { error: err } = await supabaseAuth.auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: window.location.origin },
     })
