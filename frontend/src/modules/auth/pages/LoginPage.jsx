@@ -37,8 +37,14 @@ export default function LoginPage() {
   async function handleLogin(e) {
     e.preventDefault()
     setBusy(true); setError(''); setSuccess('')
-    const { error: err } = await supabaseAuth.auth.signInWithPassword({ email: email.trim(), password })
-    if (err) { setError(err.message); setBusy(false) }
+    const { data, error: err } = await supabaseAuth.auth.signInWithPassword({ email: email.trim(), password })
+    if (err) {
+      setError(err.message)
+      setBusy(false)
+      return
+    }
+    // Debug temporal — ver en consola qué devuelve la sesión
+    console.log('[Login] sesión OK, user_id:', data?.user?.id)
   }
 
   async function handleMagicLink(e) {

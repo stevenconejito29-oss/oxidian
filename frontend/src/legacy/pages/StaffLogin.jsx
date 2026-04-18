@@ -18,7 +18,7 @@ function isLocked(key) {
   if (!a) return false
   if (a.count >= MAX_ATTEMPTS) {
     if (Date.now() - a.firstAt < LOCKOUT_MS) return true
-    delete ATTEMPTS[key] // lockout expirado, resetear
+    delete ATTEMPTS[key]
   }
   return false
 }
@@ -28,9 +28,9 @@ function registerAttempt(key) {
 }
 function clearAttempts(key) { delete ATTEMPTS[key] }
 
-// ── Hash SHA-256 (mismo que Admin) ──────────────────────────────────────────
 export default function StaffLogin({ onLogin, role }) {
-  const storeId = useResolvedStoreId()
+  // Desestructuramos el nuevo flag storeIdReady para no disparar queries prematuros
+  const { storeId, storeIdReady } = useResolvedStoreId()
   const [brandName, setBrandName] = useState('Mi tienda')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -38,12 +38,15 @@ export default function StaffLogin({ onLogin, role }) {
   const passRef = useRef(null)
   const { showButton, showIOSHint, setShowIOSHint, install, getButtonLabel } = usePWAInstall()
 
-  // Limpiar campos al montar
   useEffect(() => { setUsername(''); setPassword('') }, [])
 
   useEffect(() => {
-    let active = true
+    // ── ARREGLO BUG 3: esperar a que el storeId esté resuelto antes de
+    // hacer cualquier query a Supabase. Sin este guard, se disparaban
+    // requests con storeId='default' sin sesión → 401 en consola.
+    if (!storeIdReady) return
 
+    let active = true
     loadPublicMergedSettingsMap(storeId, supabase)
       .then(settingsMap => {
         if (!active) return
@@ -52,9 +55,8 @@ export default function StaffLogin({ onLogin, role }) {
       .catch(() => {
         if (active) setBrandName('Mi tienda')
       })
-
     return () => { active = false }
-  }, [storeId])
+  }, [storeId, storeIdReady])
 
   async function login() {
     const u = username.trim().toLowerCase()

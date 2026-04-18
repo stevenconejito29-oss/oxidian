@@ -1,5 +1,5 @@
 import React from 'react'
-import { supabase, supabaseAuth } from '../../legacy/lib/supabase'
+import { supabaseAuth } from '../../legacy/lib/supabase'
 import {
   loadStoredSession,
   clearStoredSession,
@@ -10,7 +10,7 @@ import {
 export const AuthContext = React.createContext(null)
 export function useAuth() { return React.useContext(AuthContext) }
 
-// ── Helpers sesión legacy (staff PIN) ────────────────────────────
+// ─── helpers legacy (staff PIN) ──────────────────────────────────
 function buildSessionFromStored(stored) {
   if (!stored?.supabase_access_token) return null
   return { access_token: stored.supabase_access_token, user: stored.user || null, _source: 'appSession' }
@@ -23,34 +23,18 @@ function readActiveStoredSession() {
   return null
 }
 
-function persistNativeSession(session) {
-  if (!session?.access_token) return
-  const current = loadStoredSession(STORAGE_KEYS.admin) || {}
-  persistStoredSession(STORAGE_KEYS.admin, {
-    ...current,
-    user: session.user || current.user || null,
-    auth_expires_at: session.expires_at
-      ? new Date(session.expires_at * 1000).toISOString()
-      : current.auth_expires_at || null,
-    supabase_access_token: session.access_token,
-    _source: 'supabaseAuth',
-  })
-}
-
-function clearNativeSessionMirror() {
-  const current = loadStoredSession(STORAGE_KEYS.admin)
-  if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
-}
-
 export function AuthProvider({ children }) {
   const [session,    setSession]    = React.useState(null)
   const [membership, setMembership] = React.useState(null)
   const [loading,    setLoading]    = React.useState(true)
 
-  async function loadMembership(userId) {
+  // ── Carga la membresía usando supabaseAuth (cliente nativo con sesión real)
+  async function loadMembership(userId, accessToken) {
     if (!userId) { setMembership(null); return }
     try {
-      const { data } = await supabase
+      // Usamos supabaseAuth directamente — tiene el Bearer token en memoria
+      // porque es el mismo cliente con el que se hizo signInWithPassword()
+      const { data, error } = await supabaseAuth
         .from('user_memberships')
         .select('role, tenant_id, store_id, branch_id, is_active, metadata')
         .eq('user_id', userId)
@@ -58,62 +42,92 @@ export function AuthProvider({ children }) {
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle()
+
+      if (error) {
+        console.warn('[AuthProvider] loadMembership error:', error.message)
+        setMembership(null)
+        return
+      }
       setMembership(data || null)
-    } catch { setMembership(null) }
+    } catch (e) {
+      console.warn('[AuthProvider] loadMembership exception:', e)
+      setMembership(null)
+    }
   }
 
   React.useEffect(() => {
     let mounted = true
-    async function applySession(nextSession) {
-      if (nextSession?.user?.id) {
-        persistNativeSession(nextSession)
-        // CRÍTICO: cargar membership ANTES de exponer la sesión.
-        // Si se hace setSession primero, React re-renderiza con
-        // isAuthenticated=true pero role='anonymous' → redirect a '/'.
-        await loadMembership(nextSession.user.id)
-        if (mounted) setSession(nextSession)
-        if (mounted) setLoading(false)
+
+    // ── Aplica una sesión de Supabase Auth (login nativo de admin/tenant/store)
+    async function applyNativeSession(s) {
+      if (!s?.user?.id) {
+        if (mounted) { setSession(null); setMembership(null); setLoading(false) }
         return
       }
+      // Persistir en appSession para compatibilidad con el cliente legacy
+      persistStoredSession(STORAGE_KEYS.admin, {
+        user: s.user,
+        supabase_access_token: s.access_token,
+        auth_expires_at: s.expires_at
+          ? new Date(s.expires_at * 1000).toISOString()
+          : null,
+        _source: 'supabaseAuth',
+      })
+      // CRÍTICO: cargar membership ANTES de setSession
+      // Si setSession va primero, React renderiza isAuthenticated=true con role='anonymous'
+      // y el LoginPage redirige a '/' antes de que el role esté listo
+      await loadMembership(s.user.id)
+      if (mounted) { setSession(s); setLoading(false) }
+    }
 
+    // ── Aplica una sesión legacy de staff (PIN login)
+    function applyLegacySession() {
       const active = readActiveStoredSession()
-      const legacy = active ? buildSessionFromStored(active.stored) : null
-      await loadMembership(legacy?.user?.id)
-      if (mounted) setSession(legacy)
-      if (mounted) setLoading(false)
+      const s = active ? buildSessionFromStored(active.stored) : null
+      if (mounted) { setSession(s); setLoading(false) }
     }
 
     async function init() {
-      // 1. Supabase native auth (admin / tenant / store roles)
+      // 1. ¿Hay sesión nativa de Supabase Auth?
       const { data: { session: s } } = await supabaseAuth.auth.getSession()
       if (!mounted) return
-      await applySession(s)
+      if (s?.user?.id) {
+        await applyNativeSession(s)
+        return
+      }
+      // 2. ¿Hay sesión legacy de staff por PIN?
+      applyLegacySession()
     }
+
     init()
 
-    // Listen Supabase auth changes (login / logout / token refresh)
-    const { data: { subscription: authSub } } = supabaseAuth.auth.onAuthStateChange(
-      (_event, s) => {
-        if (!mounted) return
-        if (!s) clearNativeSessionMirror()
-        window.setTimeout(() => {
-          if (!mounted) return
-          applySession(s)
-        }, 0)
+    // Escuchar cambios de sesión nativa (login, logout, refresh de token)
+    const { data: { subscription } } = supabaseAuth.auth.onAuthStateChange((_event, s) => {
+      if (!mounted) return
+      if (!s) {
+        // Logout: limpiar todo
+        const current = loadStoredSession(STORAGE_KEYS.admin)
+        if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
+        if (mounted) { setSession(null); setMembership(null) }
+        return
       }
-    )
-    // Listen legacy appSession changes between tabs
+      // Nueva sesión — usar setTimeout para no bloquear el event loop de Supabase
+      window.setTimeout(() => {
+        if (!mounted) return
+        applyNativeSession(s)
+      }, 0)
+    })
+
+    // Escuchar cambios de appSession entre tabs (staff PIN)
     function onStorage(e) {
       if (!Object.values(STORAGE_KEYS).includes(e.key)) return
-      const a = readActiveStoredSession()
-      const s2 = a ? buildSessionFromStored(a.stored) : null
-      setSession(s2)
-      loadMembership(s2?.user?.id)
+      applyLegacySession()
     }
     window.addEventListener('storage', onStorage)
+
     return () => {
       mounted = false
-      authSub.unsubscribe()
+      subscription.unsubscribe()
       window.removeEventListener('storage', onStorage)
     }
   }, [])
@@ -121,21 +135,26 @@ export function AuthProvider({ children }) {
   async function signOut() {
     try { await supabaseAuth.auth.signOut() } catch {}
     for (const key of Object.values(STORAGE_KEYS)) clearStoredSession(key)
-    setSession(null); setMembership(null)
+    setSession(null)
+    setMembership(null)
   }
 
   const value = {
-    session, user: session?.user || null, membership, loading,
+    session,
+    user:            session?.user || null,
+    membership,
+    loading,
     isAuthenticated: Boolean(session),
-    role:      membership?.role      || 'anonymous',
-    tenantId:  membership?.tenant_id  || null,
-    storeId:   membership?.store_id   || null,
-    branchId:  membership?.branch_id  || null,
-    isSuperAdmin:  membership?.role === 'super_admin',
-    isTenantOwner: ['tenant_owner','tenant_admin'].includes(membership?.role),
-    isStoreAdmin:  ['store_admin','store_operator'].includes(membership?.role),
-    isBranchOp:    ['branch_manager','kitchen','rider','cashier'].includes(membership?.role),
+    role:            membership?.role      || 'anonymous',
+    tenantId:        membership?.tenant_id  || null,
+    storeId:         membership?.store_id   || null,
+    branchId:        membership?.branch_id  || null,
+    isSuperAdmin:    membership?.role === 'super_admin',
+    isTenantOwner:   ['tenant_owner', 'tenant_admin'].includes(membership?.role),
+    isStoreAdmin:    ['store_admin', 'store_operator'].includes(membership?.role),
+    isBranchOp:      ['branch_manager', 'kitchen', 'rider', 'cashier'].includes(membership?.role),
     signOut,
   }
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

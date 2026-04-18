@@ -96,17 +96,13 @@ export function setStoredActiveStoreId(storeId) {
 export function getRequestedStoreId() {
   if (typeof window === 'undefined') return null
   try {
-    // 1. Query param solo en desarrollo/local para QA
     if (canUseStoreQueryOverride()) {
       const params = new URLSearchParams(window.location.search)
       const fromQuery = params.get('store')
       if (fromQuery) return normalizeStoreId(fromQuery)
     }
-
-    // 2. Path-based: /s/<slug>/...  — sin redirect, URL permanente
     const pathMatch = window.location.pathname.match(/^\/s\/([^/]+)/)
     if (pathMatch?.[1]) return normalizeStoreId(pathMatch[1])
-
     return null
   } catch {
     return null
@@ -123,26 +119,19 @@ export async function resolveDomainStoreContext() {
 
   domainStoreContextPromise = fetch('/api/middleware/resolve-store', {
     method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
+    headers: { Accept: 'application/json' },
     credentials: 'same-origin',
   })
     .then(async response => {
-      if (!response.ok) {
-        return { resolvedByDomain: false, storeId: null, niche: DEFAULT_NICHE }
-      }
-
+      if (!response.ok) return { resolvedByDomain: false, storeId: null, niche: DEFAULT_NICHE }
       const payload = await response.json().catch(() => ({}))
       const resolvedStoreId = normalizeOptionalText(
         response.headers.get('x-store-id') || payload?.storeId,
       )
-
       if (!resolvedStoreId) {
         writeCachedDomainStoreContext(null)
         return { resolvedByDomain: false, storeId: null, niche: DEFAULT_NICHE }
       }
-
       const context = {
         resolvedByDomain: true,
         storeId: normalizeStoreId(resolvedStoreId),
@@ -163,17 +152,12 @@ export async function resolveConfiguredStoreContext(client = supabase) {
     setStoredActiveStoreId(domainContext.storeId)
     return domainContext
   }
-
   const requested = getRequestedStoreId()
-  if (requested) {
-    return { resolvedByDomain: false, storeId: requested, niche: DEFAULT_NICHE }
-  }
-
+  if (requested) return { resolvedByDomain: false, storeId: requested, niche: DEFAULT_NICHE }
   const desktopBound = getDesktopBoundStoreId()
   if (desktopBound && desktopBound !== DEFAULT_STORE_ID) {
     return { resolvedByDomain: false, storeId: desktopBound, niche: DEFAULT_NICHE }
   }
-
   const config = await loadStoreConfig(DEFAULT_STORE_ID, client, { visibility: 'public' }).catch(() => null)
   return {
     resolvedByDomain: false,
@@ -187,8 +171,25 @@ export async function resolveConfiguredStoreId(client = supabase) {
   return normalizeStoreId(context?.storeId || DEFAULT_STORE_ID)
 }
 
+// ── useResolvedStoreId ────────────────────────────────────────────────────────
+// ARREGLO BUG 3: el hook ahora expone `storeIdReady` (boolean) además del
+// storeId. Mientras storeIdReady es false, los consumers NO deben disparar
+// queries a Supabase — aún estamos resolviendo el contexto de tienda.
+//
+// Uso básico (solo storeId, comportamiento idéntico al anterior):
+//   const storeId = useResolvedStoreId()
+//
+// Uso con guard:
+//   const { storeId, storeIdReady } = useResolvedStoreId()
+//   useEffect(() => {
+//     if (!storeIdReady) return  // esperar
+//     fetchData(storeId)
+//   }, [storeId, storeIdReady])
+
 export function useResolvedStoreId(initialValue = DEFAULT_STORE_ID) {
   const [storeId, setStoreId] = useState(normalizeStoreId(initialValue))
+  // storeIdReady = true cuando la resolución asíncrona terminó al menos una vez
+  const [storeIdReady, setStoreIdReady] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -196,12 +197,24 @@ export function useResolvedStoreId(initialValue = DEFAULT_STORE_ID) {
       .then(context => {
         if (!active) return
         setStoreId(normalizeStoreId(context?.storeId || DEFAULT_STORE_ID))
+        setStoreIdReady(true)
       })
       .catch(() => {
-        if (active) setStoreId(DEFAULT_STORE_ID)
+        if (!active) return
+        setStoreId(DEFAULT_STORE_ID)
+        setStoreIdReady(true)
       })
     return () => { active = false }
   }, [])
 
-  return storeId
+  // Compatibilidad hacia atrás: el hook puede usarse como string directamente
+  // (desestructurando o no). Devolvemos un objeto con .storeId y .storeIdReady,
+  // pero también con Symbol.toPrimitive para que `const storeId = useResolvedStoreId()`
+  // siga funcionando sin cambios en los sitios que no necesiten el flag.
+  const result = { storeId, storeIdReady }
+  result[Symbol.toPrimitive] = () => storeId
+  result.toString = () => storeId
+  result.valueOf  = () => storeId
+
+  return result
 }
