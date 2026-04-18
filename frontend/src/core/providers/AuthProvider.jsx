@@ -28,27 +28,49 @@ export function AuthProvider({ children }) {
   const [membership, setMembership] = React.useState(null)
   const [loading,    setLoading]    = React.useState(true)
 
+  // Orden de prioridad de roles: el más alto gana
+  const ROLE_PRIORITY = [
+    'super_admin',
+    'tenant_owner',
+    'tenant_admin',
+    'store_admin',
+    'store_operator',
+    'branch_manager',
+    'cashier',
+    'kitchen',
+    'rider',
+  ]
+
   // ── Carga la membresía usando supabaseAuth (cliente nativo con sesión real)
   async function loadMembership(userId, accessToken) {
     if (!userId) { setMembership(null); return }
     try {
-      // Usamos supabaseAuth directamente — tiene el Bearer token en memoria
-      // porque es el mismo cliente con el que se hizo signInWithPassword()
+      // Traemos TODAS las membresías activas y elegimos la de mayor jerarquía
       const { data, error } = await supabaseAuth
         .from('user_memberships')
         .select('role, tenant_id, store_id, branch_id, is_active, metadata')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
 
       if (error) {
         console.warn('[AuthProvider] loadMembership error:', error.message)
         setMembership(null)
         return
       }
-      setMembership(data || null)
+
+      if (!data || data.length === 0) {
+        setMembership(null)
+        return
+      }
+
+      // Seleccionar la membresía con el rol de mayor jerarquía
+      const best = data.sort((a, b) => {
+        const ai = ROLE_PRIORITY.indexOf(a.role)
+        const bi = ROLE_PRIORITY.indexOf(b.role)
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+      })[0]
+
+      setMembership(best)
     } catch (e) {
       console.warn('[AuthProvider] loadMembership exception:', e)
       setMembership(null)
