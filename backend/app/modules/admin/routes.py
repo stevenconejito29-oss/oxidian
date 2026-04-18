@@ -13,7 +13,9 @@ from flask import Blueprint, abort, g, jsonify, request, send_file
 from ...core.accounts import (
     OWNER_ROLES,
     create_or_update_auth_user,
+    find_auth_user_by_email,
     hydrate_membership_rows,
+    invite_auth_user_by_email,
     normalize_auth_user,
     update_auth_user,
     upsert_membership,
@@ -395,6 +397,66 @@ def update_owner_account(member_id):
         "tenant_id": updated.get("tenant_id"),
         "is_active": bool(updated.get("is_active")),
         **auth_user,
+    })
+
+
+@admin_bp.post("/pipeline/<request_id>/invite")
+@limiter.limit("20 per minute")
+def invite_pipeline_request(request_id):
+    sb = _supa()
+    lead = sb.table("landing_requests").select("*").eq("id", request_id).maybe_single().execute().data
+    if not lead:
+        abort(404, "Solicitud no encontrada")
+
+    email = _clean_text(lead.get("email")).lower()
+    if not email:
+        abort(400, "La solicitud no tiene email")
+
+    redirect_to = _clean_text(request.json.get("redirectTo") if request.is_json else "") or None
+    if not redirect_to:
+        frontend_origin = _clean_text(request.headers.get("Origin")) or None
+        redirect_to = f"{frontend_origin}/onboarding" if frontend_origin else None
+
+    existing_user = None
+    try:
+        existing_user = normalize_auth_user(find_auth_user_by_email(email))
+    except Exception:
+        existing_user = None
+
+    if existing_user and existing_user.get("user_id"):
+        return jsonify({
+            "success": False,
+            "error": "El usuario ya existe en Auth. Invitalo manualmente o continua con onboarding usando ese email.",
+            "email": email,
+            "user_id": existing_user["user_id"],
+        }), 409
+
+    try:
+        invited = invite_auth_user_by_email(
+            email,
+            redirect_to=redirect_to,
+            data={
+                "full_name": lead.get("full_name"),
+                "business_name": lead.get("business_name"),
+                "business_niche": lead.get("business_niche"),
+                "source": "landing_pipeline",
+            },
+        )
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    patch = {
+        "status": "onboarding",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    sb.table("landing_requests").update(patch).eq("id", request_id).execute()
+
+    return jsonify({
+        "success": True,
+        "request_id": request_id,
+        "email": email,
+        "redirect_to": redirect_to,
+        "user": normalize_auth_user(invited),
     })
 
 

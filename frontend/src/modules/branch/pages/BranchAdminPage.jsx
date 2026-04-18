@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../legacy/lib/supabase'
 import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
 import { useAuth } from '../../../core/providers/AuthProvider'
+import { useStoreModules } from '../../../shared/hooks/useStoreModules'
 import {
   Actions, BadgeRow, Button, Field, Form, FormGrid,
   GhostButton, Grid, Hero, Notice, Panel, QuickLinks, Shell, Stats,
@@ -25,30 +26,34 @@ const API = async (method, path, body) => {
   return res.json()
 }
 
-// ─── Tabs config ─────────────────────────────────────────────────────────────
+// ─── Tabs config — ALL_TABS con módulo requerido (null = siempre visible) ────
 
-const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard', icon: '📊' },
-  { id: 'products', label: '🍽️ Productos', icon: '🍽️' },
-  { id: 'combos', label: '🎁 Combos', icon: '🎁' },
-  { id: 'stock', label: '📦 Stock', icon: '📦' },
-  { id: 'orders', label: '🧾 Pedidos', icon: '🧾' },
-  { id: 'staff', label: '👥 Staff', icon: '👥' },
-  { id: 'marketing', label: '📣 Marketing', icon: '📣' },
-  { id: 'affiliates', label: '🔗 Afiliados', icon: '🔗' },
-  { id: 'loyalty', label: '⭐ Fidelidad', icon: '⭐' },
-  { id: 'reviews', label: '💬 Reseñas', icon: '💬' },
-  { id: 'config', label: '⚙️ Config', icon: '⚙️' },
-  { id: 'chatbot', label: '🤖 Chatbot', icon: '🤖' },
+const ALL_TABS = [
+  { id: 'dashboard',    label: 'Dashboard',     module: null },
+  { id: 'products',     label: 'Productos',     module: 'mod_catalog' },
+  { id: 'combos',       label: 'Combos',        module: 'mod_combos' },
+  { id: 'orders',       label: 'Pedidos',       module: 'mod_orders' },
+  { id: 'appointments', label: 'Agenda',        module: 'mod_appointments' },
+  { id: 'tables',       label: 'Mesas',         module: 'mod_tables' },
+  { id: 'stock',        label: 'Inventario',    module: 'mod_inventory' },
+  { id: 'variants',     label: 'Tallas/Colores',module: 'mod_variants' },
+  { id: 'staff',        label: 'Staff',         module: 'mod_staff' },
+  { id: 'loyalty',      label: 'Fidelidad',     module: 'mod_loyalty' },
+  { id: 'affiliates',   label: 'Afiliados',     module: 'mod_affiliates' },
+  { id: 'marketing',    label: 'Marketing',     module: 'mod_coupons' },
+  { id: 'reviews',      label: 'Reseñas',       module: 'mod_reviews' },
+  { id: 'finance',      label: 'Finanzas',      module: 'mod_finance' },
+  { id: 'chatbot',      label: 'Chatbot',       module: 'mod_chatbot' },
+  { id: 'config',       label: 'Config',        module: null },
 ]
 
 // ─── Componentes pequeños ────────────────────────────────────────────────────
 
-function TabBar({ active, onChange }) {
+function TabBar({ tabs, active, onChange }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20,
       padding: '4px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-      {TABS.map(tab => (
+      {tabs.map(tab => (
         <button
           key={tab.id}
           type="button"
@@ -433,76 +438,124 @@ function OrdersTab({ branchId }) {
   )
 }
 
-function StaffTab({ storeId }) {
+function StaffTab({ storeId, storeSlug, branchSlug }) {
   const [staff, setStaff] = React.useState([])
   const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', role: 'cashier', phone: '', email: '' })
+  const [form, setForm] = React.useState({ name: '', role: 'cashier', phone: '', pin: '' })
   const [saving, setSaving] = React.useState(false)
+  const [copiedId, setCopiedId] = React.useState(null)
 
   const load = () => {
     setLoading(true)
-    API('GET', '/staff').then(setStaff).catch(console.error).finally(() => setLoading(false))
+    supabase.from('staff_users').select('*').eq('store_id', storeId).order('name')
+      .then(({ data }) => setStaff(data ?? []))
+      .catch(console.error).finally(() => setLoading(false))
   }
 
   React.useEffect(load, [storeId])
 
+  const loginBase = `${window.location.origin}/s/${storeSlug}/${branchSlug}/login`
+
   async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     try {
-      await API('POST', '/staff', form)
-      setForm({ name: '', role: 'cashier', phone: '', email: '' })
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: branch } = await supabase.from('branches').select('id, tenant_id')
+        .eq('slug', branchSlug).maybeSingle()
+      await supabase.from('staff_users').insert({
+        store_id: storeId, tenant_id: branch?.tenant_id,
+        branch_id: branch?.id, name: form.name,
+        role: form.role, phone: form.phone, pin: form.pin,
+        is_active: true,
+      })
+      setForm({ name: '', role: 'cashier', phone: '', pin: '' })
       load()
     } catch (err) { console.error(err) }
     setSaving(false)
   }
 
   async function toggleActive(s) {
-    await API('PATCH', `/staff/${s.id}`, { is_active: !s.is_active })
+    await supabase.from('staff_users').update({ is_active: !s.is_active }).eq('id', s.id)
     load()
   }
 
-  const ROLES = ['branch_manager', 'kitchen', 'rider', 'cashier', 'store_operator']
+  function copyLink(id, link) {
+    navigator.clipboard.writeText(link)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const ROLES = ['branch_manager', 'kitchen', 'rider', 'cashier']
+  const ROLE_DEST = { kitchen:'kitchen', rider:'riders', cashier:'admin', branch_manager:'admin' }
 
   return (
     <Grid>
       <Panel title="Añadir personal">
         <Form onSubmit={handleSubmit}>
           <FormGrid>
-            <Field label="Nombre"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></Field>
+            <Field label="Nombre *"><input className={controlDeckStyles.input} value={form.name} required
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Camila Ruiz" /></Field>
             <Field label="Rol"><select className={controlDeckStyles.select} value={form.role}
               onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select></Field>
             <Field label="Teléfono"><input className={controlDeckStyles.input} value={form.phone}
-              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></Field>
-            <Field label="Email"><input className={controlDeckStyles.input} type="email" value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></Field>
+              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+34 600 000 000" /></Field>
+            <Field label="PIN (4-8 dígitos) *"><input className={controlDeckStyles.input} type="password"
+              inputMode="numeric" maxLength={8} value={form.pin} required
+              onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} placeholder="1234" /></Field>
           </FormGrid>
-          <Actions><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Añadir'}</Button></Actions>
+          <Actions><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Añadir empleado'}</Button></Actions>
         </Form>
+        {storeSlug && branchSlug && (
+          <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--color-background-secondary)',
+            borderRadius: 8, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            <div style={{ marginBottom: 4, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+              Link de acceso de esta sede:
+            </div>
+            <code style={{ wordBreak: 'break-all', fontSize: 11 }}>{loginBase}</code>
+          </div>
+        )}
       </Panel>
       <Panel title={`Personal (${staff.length})`} dark>
         {loading ? <Notice>Cargando...</Notice> : staff.length === 0 ? <EmptyState icon="👥" message="Sin personal registrado" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {staff.map(s => (
+          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+            {staff.map(s => {
+              const dest = ROLE_DEST[s.role] || 'admin'
+              const link = loginBase
+              return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--color-background-info)',
+                padding: '10px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--color-background-info)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 500,
                   color: 'var(--color-text-info)', flexShrink: 0 }}>
                   {s.name.slice(0, 2).toUpperCase()}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{s.role} {s.is_online ? '🟢' : '⚫'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                    {s.role} · PIN: {s.pin ? '••••' : 'sin PIN'} {s.is_online ? '🟢' : '⚫'}
+                  </div>
+                  {storeSlug && branchSlug && (
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      /s/{storeSlug}/{branchSlug}/login → {dest}
+                    </div>
+                  )}
                 </div>
-                <StatusBadge status={s.is_active ? 'active' : 'paused'} />
-                <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                  onClick={() => toggleActive(s)}>{s.is_active ? 'Desactivar' : 'Activar'}</GhostButton>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  {storeSlug && branchSlug && (
+                    <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 10 }}
+                      onClick={() => copyLink(s.id, link)}>
+                      {copiedId === s.id ? '✓ Copiado' : 'Copiar link'}
+                    </GhostButton>
+                  )}
+                  <StatusBadge status={s.is_active ? 'active' : 'paused'} />
+                  <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
+                    onClick={() => toggleActive(s)}>{s.is_active ? 'Pausar' : 'Activar'}</GhostButton>
+                </div>
               </div>
-            ))}
+            )})}
           </div>
         }
       </Panel>
@@ -927,11 +980,59 @@ function ChatbotTab({ branchId, storeId }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
+function AppointmentsTab({ config }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Citas</div>
+      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
+        Slot de {config?.slot_duration_min ?? 30} min · Hasta {config?.max_advance_days ?? 14} días de anticipación.
+        La vista completa de agenda estará disponible en la próxima actualización.
+      </div>
+    </div>
+  )
+}
+
+function TablesTab({ config }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🪑</div>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Mesas</div>
+      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
+        {config?.total_tables ?? 0} mesas configuradas.
+        Zonas: {(config?.zones ?? ['salón']).join(', ')}.
+        Gestión de mesas y reservas disponible próximamente.
+      </div>
+    </div>
+  )
+}
+
+function VariantsTab({ config }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>👗</div>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Variantes</div>
+      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
+        Tallas: {(config?.standard_sizes ?? ['S','M','L','XL']).join(' · ')}.
+        Matriz de tallas y colores disponible próximamente.
+      </div>
+    </div>
+  )
+}
+
 export default function BranchAdminPage() {
   const { branchId, storeId, tenantId, role } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = React.useState(searchParams.get('tab') || 'dashboard')
   const [branchName, setBranchName] = React.useState('Mi Sede')
+  const [storeSlug, setStoreSlug] = React.useState('')
+  const [branchSlug, setBranchSlug] = React.useState('')
+  const { isEnabled, getConfig, loading: modulesLoading } = useStoreModules()
+
+  // Tabs dinámicos según módulos activos
+  const visibleTabs = modulesLoading
+    ? ALL_TABS.filter(t => t.module === null)
+    : ALL_TABS.filter(t => !t.module || isEnabled(t.module))
 
   React.useEffect(() => {
     const tab = searchParams.get('tab')
@@ -942,8 +1043,12 @@ export default function BranchAdminPage() {
 
   React.useEffect(() => {
     if (!branchId) return
-    supabase.from('branches').select('name').eq('id', branchId).maybeSingle()
-      .then(({ data }) => { if (data?.name) setBranchName(data.name) })
+    supabase.from('branches').select('name, slug, stores(slug)').eq('id', branchId).maybeSingle()
+      .then(({ data }) => {
+        if (data?.name) setBranchName(data.name)
+        if (data?.slug) setBranchSlug(data.slug)
+        if (data?.stores?.slug) setStoreSlug(data.stores.slug)
+      })
   }, [branchId])
 
   if (!branchId) {
@@ -957,18 +1062,22 @@ export default function BranchAdminPage() {
   }
 
   const tabContent = {
-    dashboard: <DashboardTab branchId={branchId} storeId={storeId} />,
-    products: <ProductsTab storeId={storeId} />,
-    combos: <CombosTab storeId={storeId} />,
-    stock: <StockTab storeId={storeId} />,
-    orders: <OrdersTab branchId={branchId} />,
-    staff: <StaffTab storeId={storeId} />,
-    marketing: <MarketingTab storeId={storeId} />,
-    affiliates: <AffiliatesTab storeId={storeId} />,
-    loyalty: <LoyaltyTab storeId={storeId} />,
-    reviews: <ReviewsTab storeId={storeId} />,
-    config: <ConfigTab branchId={branchId} />,
-    chatbot: <ChatbotTab branchId={branchId} storeId={storeId} />,
+    dashboard:    <DashboardTab branchId={branchId} storeId={storeId} />,
+    products:     <ProductsTab storeId={storeId} />,
+    combos:       <CombosTab storeId={storeId} />,
+    stock:        <StockTab storeId={storeId} />,
+    orders:       <OrdersTab branchId={branchId} />,
+    staff:        <StaffTab storeId={storeId} storeSlug={storeSlug} branchSlug={branchSlug} />,
+    marketing:    <MarketingTab storeId={storeId} />,
+    affiliates:   <AffiliatesTab storeId={storeId} />,
+    loyalty:      <LoyaltyTab storeId={storeId} />,
+    reviews:      <ReviewsTab storeId={storeId} />,
+    config:       <ConfigTab branchId={branchId} />,
+    chatbot:      <ChatbotTab branchId={branchId} storeId={storeId} />,
+    appointments: <AppointmentsTab config={getConfig('mod_appointments')} />,
+    tables:       <TablesTab config={getConfig('mod_tables')} />,
+    variants:     <VariantsTab config={getConfig('mod_variants')} />,
+    finance:      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Módulo de Finanzas — próximamente</div>,
   }
 
   return (
@@ -982,7 +1091,7 @@ export default function BranchAdminPage() {
           { label: 'Tienda', value: storeId || '—' },
         ]}
       />
-      <TabBar active={activeTab} onChange={nextTab => {
+      <TabBar tabs={visibleTabs} active={activeTab} onChange={nextTab => {
         setActiveTab(nextTab)
         const next = new URLSearchParams(searchParams)
         next.set('tab', nextTab)

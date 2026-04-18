@@ -93,6 +93,25 @@ def update_auth_user(user_id: str, *, password: str | None = None, full_name: st
     return _admin_auth_request("PUT", f"/admin/users/{user_id}", json=payload)
 
 
+def invite_auth_user_by_email(
+    email: str,
+    *,
+    redirect_to: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    clean_email = (email or "").strip().lower()
+    if not clean_email:
+        raise RuntimeError("Email requerido")
+
+    payload: dict[str, Any] = {"email": clean_email}
+    if redirect_to:
+        payload["redirect_to"] = redirect_to
+    if data:
+        payload["data"] = data
+
+    return _admin_auth_request("POST", "/invite", json=payload)
+
+
 def find_auth_user_by_email(email: str) -> dict[str, Any] | None:
     target = (email or "").strip().lower()
     if not target:

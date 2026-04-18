@@ -130,3 +130,105 @@
 - La creacion de usuarios depende de que `SUPABASE_SERVICE_ROLE_KEY` siga presente y valido en `backend/.env`.
 - No se desplego este corte todavia.
 - No se añadieron tablas nuevas; por eso `database_schema.sql` no requirio cambios estructurales en esta iteracion.
+
+### Verificacion adicional antes de pruebas
+
+- `supabase/migrations/0007_modules_engine.sql` no existe en este repo. Si ese motor de modulos vive fuera del workspace, hay que ejecutarlo manualmente en Supabase antes de esperar tabs dinamicos.
+- La dependencia de `stores.slug` es real en el frontend:
+  - `TenantAdminPage` arma links de staff con `/s/{storeSlug}/{branchSlug}/login`
+  - `StaffLoginPage` resuelve la tienda con `eq('slug', storeSlug)`
+  - si `stores.slug` esta `NULL`, esos links fallan aunque exista `store_id`
+- El Pipeline actual si tiene un bug critico real:
+  - `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+  - `PipelineTab.sendInvite()` llama `sb.auth.admin.inviteUserByEmail(...)` desde el navegador
+  - eso requiere service role y por tanto debe moverse al backend Flask
+- Solucion temporal valida mientras no se cablee el backend del pipeline:
+  - crear/invitar el usuario desde Supabase Dashboard → Authentication → Users
+  - luego usar su email para el flujo de onboarding/membresias
+
+## Iteracion 2026-04-18 - fix backend del Pipeline
+
+### Implementado
+
+- Se agrego `invite_auth_user_by_email()` en [backend/app/core/accounts.py](C:/Users/steven/Downloads/carmocream/carmocream/backend/app/core/accounts.py) usando el Admin API de Supabase del lado servidor.
+- Se agrego `POST /admin/pipeline/<request_id>/invite` en [backend/app/modules/admin/routes.py](C:/Users/steven/Downloads/carmocream/carmocream/backend/app/modules/admin/routes.py).
+- El boton "Aprobar y enviar invitacion" del `PipelineTab` ahora llama a Flask en lugar de intentar `sb.auth.admin` desde el navegador en [frontend/src/modules/admin/pages/SuperAdminPage.jsx](C:/Users/steven/Downloads/carmocream/carmocream/frontend/src/modules/admin/pages/SuperAdminPage.jsx).
+- Se restauro el tab `owners` en la barra de tabs del Super Admin.
+- Se corrigio un bloque JSX duplicado en [frontend/src/modules/branch/pages/BranchAdminPage.jsx](C:/Users/steven/Downloads/carmocream/carmocream/frontend/src/modules/branch/pages/BranchAdminPage.jsx) que estaba rompiendo el build.
+
+### Validacion
+
+- `python -m compileall backend/app`: correcto.
+- `npm run build` en `frontend`: correcto.
+
+### Cambios de base de datos necesarios para empezar a probar
+
+- Obligatorio si quieres staff login por URL amigable:
+  - `update stores set slug = id where slug is null;`
+- Obligatorio si quieres tabs dinamicos por modulos:
+  - ejecutar el SQL externo `0007_modules_engine.sql` en Supabase, porque no vive en este repo.
+- Muy probable si quieres que `overview`, `pipeline` y `tenants` del Super Admin funcionen completos:
+  - confirmar que existan las tablas `landing_requests`, `tenant_subscriptions` y `store_plans`
+  - esas tablas hoy se usan en frontend y la migracion `0005_testing_readiness.sql` ya las define como esquema canonico
+- Recomendado para pruebas de invitaciones por email:
+  - configurar SMTP en Supabase Auth si vas a invitar correos fuera del equipo del proyecto
+
+## Iteracion 2026-04-18 - archivo de base listo para pruebas
+
+### Nuevos archivos
+
+- [supabase/migrations/0005_testing_readiness.sql](C:/Users/steven/Downloads/carmocream/carmocream/supabase/migrations/0005_testing_readiness.sql)
+- [scripts/prepare_database_for_testing.sql](C:/Users/steven/Downloads/carmocream/carmocream/scripts/prepare_database_for_testing.sql)
+
+### Que resuelve
+
+- Consolida `store_plans` y crea `tenant_subscriptions` y `landing_requests` si faltan.
+- Inserta y normaliza los planes base `starter`, `growth` y `enterprise`.
+- Corrige `landing_requests.source` y hace backfill de `stores.slug` y `branches.slug`.
+- Crea `store_process_profiles` por defecto para tiendas que no lo tengan.
+- Publica RPCs canonicas:
+  - `get_store_modules(text)`
+  - `get_store_features(text)`
+  - `apply_niche_preset(text, uuid, text)`
+- Añade grants y RLS minimos para que el frontend actual pueda empezar a operar.
+
+### Nota
+
+- Este SQL ya no es una capa de compatibilidad; ahora representa el esquema canonico faltante respecto a `RESET_COMPLETE.sql`.
+
+## Iteracion 2026-04-18 - correccion canonica de esquema
+
+### Decision
+
+- Se descarta la estrategia de "compatibilidad para que funcione".
+- El catalogo canonico de planes del proyecto queda unificado en `public.store_plans`.
+- `public.saas_plans` deja de ser parte del esquema objetivo y se elimina en la migracion 0005.
+
+### Correcciones aplicadas
+
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx` ahora lee la relacion correcta `tenant_subscriptions -> store_plans`.
+- `frontend/src/modules/admin/pages/OnboardingPage.jsx` ahora:
+  - obliga sesion valida
+  - usa el email autenticado como `owner_email`
+  - crea primero la membresia `tenant_owner`
+  - luego hace `upsert` de `tenant_subscriptions`
+- `supabase/migrations/0005_testing_readiness.sql` fue reescrito como migracion canonica:
+  - consolida `store_plans`
+  - crea `tenant_subscriptions` apuntando a `store_plans(id)`
+  - crea `landing_requests` con columna `source`
+  - hace backfill de `stores.slug` y `branches.slug`
+  - crea `get_store_modules`, `get_store_features` y `apply_niche_preset` como parte del esquema real
+  - agrega policies para:
+    - crear `tenants` cuando `owner_email` coincide con el email autenticado
+    - insertar `tenant_subscriptions` cuando ya existe membresia activa del tenant
+  - elimina `saas_plans` al final para evitar doble modelo
+- `scripts/prepare_database_for_testing.sql` ahora es espejo exacto de esa migracion canonica.
+- `database_schema.sql` se alineo para reflejar `store_plans` como tabla de planes valida.
+
+### Impacto
+
+- Se corrige el error de concepto entre `store_plans` y `saas_plans`.
+- Se corrige el error de columna `yearly_price` eliminando ese supuesto del esquema.
+- Se corrige el contrato de `landing_requests` agregando `source`, que ya era usado por el landing.
+- Los tabs dinamicos dejan de depender de una tabla inventada adicional; ahora la resolucion base sale de `store_process_profiles` y del nicho de la tienda.
+- Se corrige el `insert into store_process_profiles` de la migracion 0005, que tenia 21 columnas y solo 20 expresiones.

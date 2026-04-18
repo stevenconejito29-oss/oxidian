@@ -13,7 +13,8 @@
 --   3. supabase/migrations/0003_jwt_claims_hook.sql
 --   4. supabase/migrations/0004_fix_42803.sql
 --   5. supabase/migrations/0004_patch_functions.sql
---   6. supabase/migrations/RESET_COMPLETE.sql
+--   6. supabase/migrations/0005_testing_readiness.sql
+--   7. supabase/migrations/RESET_COMPLETE.sql
 --
 -- Regla de trabajo:
 --   - cualquier nueva funcionalidad con datos debe reflejarse aqui primero
@@ -34,9 +35,12 @@
 -- public.branches
 -- public.user_memberships
 -- public.store_templates
+-- public.store_plans
 -- public.account_activations
 -- public.chatbot_portable_pings
 -- public.chatbot_authorization_log
+-- public.tenant_subscriptions
+-- public.landing_requests
 --
 -- Tablas de dominio con scope esperado
 -- ============================================================
@@ -67,6 +71,9 @@
 -- oxidian_checkout_sessions
 -- domain_mappings
 -- store_niche_templates
+-- tenant_subscriptions
+-- store_plans
+-- landing_requests
 --
 -- Funciones de seguridad esperadas
 -- ============================================================
@@ -83,6 +90,9 @@
 -- public.invite_member(...)
 -- public.revoke_member(...)
 -- public.get_my_membership()
+-- public.get_store_modules(text)
+-- public.get_store_features(text)
+-- public.apply_niche_preset(text, uuid, text)
 --
 -- Politicas RLS esperadas
 -- ============================================================
@@ -93,6 +103,8 @@
 -- user_memberships: super admin full access + tenant owner manage
 -- store_templates: lectura publica de templates activos
 -- store_plans: lectura publica de planes activos
+-- tenant_subscriptions: lectura por tenant y control total por super admin
+-- landing_requests: insercion publica + gestion por super admin
 --
 -- Nota operativa importante
 -- ============================================================
@@ -100,5 +112,14 @@
 -- La fuente mas completa observada hoy para reconstruir el esquema es:
 --   supabase/migrations/RESET_COMPLETE.sql
 --
--- Los archivos 0004_fix_42803.sql y 0004_patch_functions.sql deben revisarse
--- junto con RESET_COMPLETE.sql antes de ejecutar cambios en un entorno nuevo.
+-- La migracion `0005_testing_readiness.sql` ya no es una capa de compatibilidad:
+-- consolida el esquema canonico que falta respecto a RESET_COMPLETE.sql para:
+--   - pipeline comercial (`landing_requests`)
+--   - suscripciones por tenant (`tenant_subscriptions`)
+--   - catalogo canonico de planes (`store_plans`)
+--   - resolucion de modulos y presets (`get_store_modules`, `get_store_features`,
+--     `apply_niche_preset`)
+--
+-- Los archivos 0004_fix_42803.sql, 0004_patch_functions.sql y
+-- 0005_testing_readiness.sql deben revisarse junto con RESET_COMPLETE.sql
+-- antes de ejecutar cambios en un entorno nuevo.

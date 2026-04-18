@@ -27,10 +27,12 @@ import {
 import ChatbotAuthManager from '../components/ChatbotAuthManager'
 
 const ADMIN_TABS = [
-  { id: 'stores', label: '🏪 Tiendas' },
-  { id: 'owners', label: '👑 Dueños' },
-  { id: 'chatbot', label: '🤖 Chatbot Auth' },
-  { id: 'links', label: '🧭 Accesos rápidos' },
+  { id: 'overview',  label: 'Vision Global' },
+  { id: 'pipeline',  label: 'Solicitudes' },
+  { id: 'tenants',   label: 'Tenants' },
+  { id: 'owners',    label: 'Duenos' },
+  { id: 'stores',    label: 'Tiendas' },
+  { id: 'chatbot',   label: 'Chatbot' },
 ]
 
 const INITIAL_FORM = {
@@ -251,6 +253,17 @@ export default function SuperAdminPage() {
 
       {/* Tabs de navegación */}
       <TabBar active={activeTab} onChange={setActiveTab} />
+
+      {/* ── Tab: Vision Global ────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <OverviewTab storeCount={catalog.stores.length} statusCount={statusCount} planCount={plans.length} />
+      )}
+
+      {/* ── Tab: Solicitudes (Pipeline) ───────────────────────── */}
+      {activeTab === 'pipeline' && <PipelineTab />}
+
+      {/* ── Tab: Tenants ──────────────────────────────────────── */}
+      {activeTab === 'tenants' && <TenantsTab plans={plans} />}
 
       {/* ── Tab: Tiendas ──────────────────────────────────────── */}
       {activeTab === 'stores' && (
@@ -485,35 +498,271 @@ export default function SuperAdminPage() {
       )}
 
       {activeTab === 'chatbot' && (
-        <Panel
-          title="Autorización de chatbot portable"
-          text="Autoriza o revoca el acceso al chatbot portable por sede. Solo las sedes autorizadas pueden descargarlo."
-        >
+        <Panel title="Autorización de chatbot portable"
+          text="Autoriza o revoca el acceso al chatbot portable por sede.">
           <ChatbotAuthManager />
         </Panel>
       )}
-
-      {/* ── Tab: Accesos rápidos ──────────────────────────────── */}
-      {activeTab === 'links' && (
-        <Grid>
-          <Panel title="Accesos del sistema" text="Navegación directa a los módulos principales.">
-            <QuickLinks links={[
-              { emoji: '🧭', title: 'Tenant admin', text: 'Panel del dueño para crear staff y gobernar la marca.', href: '/tenant/admin' },
-              { emoji: '📍', title: 'Branch admin', text: 'Panel de sede donde viven cocina, reparto y afiliados.', href: '/branch/admin' },
-              { emoji: '🍽️', title: 'Storefront', text: 'Menú público conectado al store activo.', href: '/storefront/menu' },
-              { emoji: '🧪', title: 'Legacy admin', text: 'Interfaz anterior para referencia.', href: '/legacy/admin' },
-            ]} />
-          </Panel>
-          <Panel title="Documentación de la arquitectura" dark>
-            <QuickLinks links={[
-              { emoji: '📋', title: 'Jerarquía', text: 'Super Admin → Tenant → Store → Branch', href: '#' },
-              { emoji: '🔒', title: 'RLS activo', text: 'can_access_scope() en todas las tablas', href: '#' },
-              { emoji: '🤖', title: 'Chatbot portable', text: 'WhatsApp + IA + anti-ban + relay', href: '#' },
-              { emoji: '🎨', title: '4 templates', text: 'delivery, vitrina, portfolio, minimal', href: '#' },
-            ]} />
-          </Panel>
-        </Grid>
-      )}
     </Shell>
+  )
+}
+
+// ═══════════════════════════════════════════════════════
+// TABS NUEVOS — OverviewTab, PipelineTab, TenantsTab
+// ═══════════════════════════════════════════════════════
+
+function OverviewTab({ storeCount, statusCount, planCount }) {
+  const [metrics, setMetrics] = React.useState(null)
+  const { supabase: sb } = React.useMemo(() => ({ supabase: null }), [])
+
+  React.useEffect(() => {
+    import('../../../shared/supabase/client').then(({ supabase }) => {
+      Promise.all([
+        supabase.from('tenants').select('id', { count: 'exact', head: true }),
+        supabase.from('branches').select('id', { count: 'exact', head: true }),
+        supabase.from('landing_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('orders').select('id', { count: 'exact', head: true })
+          .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
+      ]).then(([t, b, l, o]) => setMetrics({
+        tenants: t.count ?? 0, branches: b.count ?? 0,
+        leads: l.count ?? 0, orders24h: o.count ?? 0,
+      }))
+    })
+  }, [])
+
+  return (
+    <Stats items={[
+      { label: 'Tenants',       value: String(metrics?.tenants ?? '…'),   hint: 'Dueños de negocio activos' },
+      { label: 'Tiendas',       value: String(storeCount),                hint: 'Stores en el sistema' },
+      { label: 'Sedes',         value: String(metrics?.branches ?? '…'),  hint: 'Puntos de operación' },
+      { label: 'Leads pendientes', value: String(metrics?.leads ?? '…'), hint: 'Del landing sin contactar' },
+      { label: 'Pedidos (24h)', value: String(metrics?.orders24h ?? '…'), hint: 'Órdenes en las últimas 24h' },
+      { label: 'Planes',        value: String(planCount),                 hint: 'Paquetes disponibles' },
+    ]} />
+  )
+}
+
+const STATUS_COLOR = {
+  pending:'#ca8a04', contacted:'#2563eb', demo_scheduled:'#7c3aed',
+  onboarding:'#0891b2', converted:'#16a34a', rejected:'#dc2626', ghosted:'#9ca3af',
+}
+const PIPELINE_STATES = ['pending','contacted','demo_scheduled','onboarding','converted','rejected','ghosted']
+
+function PipelineTab() {
+  const [requests, setRequests] = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
+  const [filter,   setFilter]   = React.useState('pending')
+  const [saving,   setSaving]   = React.useState(null)
+  const [sb, setSb] = React.useState(null)
+
+  React.useEffect(() => {
+    import('../../../shared/supabase/client').then(({ supabase }) => {
+      setSb(supabase)
+      supabase.from('landing_requests').select('*').order('created_at', { ascending: false })
+        .then(({ data }) => { setRequests(data ?? []); setLoading(false) })
+    })
+  }, [])
+
+  async function advance(id, status) {
+    if (!sb) return
+    setSaving(id)
+    const patch = { status, updated_at: new Date().toISOString() }
+    if (status === 'contacted')  patch.contacted_at = new Date().toISOString()
+    if (status === 'converted')  patch.converted_at = new Date().toISOString()
+    await sb.from('landing_requests').update(patch).eq('id', id)
+    setRequests(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
+    setSaving(null)
+  }
+
+  async function sendInvite(r) {
+    const ok = window.confirm(`Enviar invitación a ${r.email}?\nEntrarán en /onboarding para configurar su tienda.`)
+    if (!ok) return
+    setSaving(r.id)
+    try {
+      await adminApi('POST', `/pipeline/${r.id}/invite`, {
+        redirectTo: `${window.location.origin}/onboarding`,
+      })
+      setRequests(rs => rs.map(item => item.id === r.id
+        ? { ...item, status: 'onboarding', updated_at: new Date().toISOString() }
+        : item))
+      window.alert('Invitación enviada. El usuario recibirá el email para crear su cuenta.')
+    } catch (e) { window.alert('Error: ' + e.message) }
+    setSaving(null)
+  }
+
+  const byStatus = requests.reduce((a, r) => { a[r.status] = (a[r.status]||0)+1; return a }, {})
+  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
+
+  if (loading) return <Notice>Cargando solicitudes...</Notice>
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+        {['all', ...PIPELINE_STATES].map(s => (
+          <button key={s} type="button" onClick={() => setFilter(s)}
+            style={{ padding:'4px 12px', borderRadius:20, fontSize:12, cursor:'pointer', fontFamily:'inherit',
+              border: filter===s ? 'none' : '1px solid var(--color-border-secondary)',
+              background: filter===s ? (STATUS_COLOR[s]||'var(--color-text-primary)') : 'transparent',
+              color: filter===s ? '#fff' : 'var(--color-text-secondary)' }}>
+            {s==='all'?'Todos':s} {byStatus[s]?`(${byStatus[s]})`:''}</button>
+        ))}
+      </div>
+      {filtered.length === 0
+        ? <Notice>Sin solicitudes en este estado</Notice>
+        : filtered.map(r => (
+          <div key={r.id} style={{ padding:'14px', marginBottom:8, borderRadius:10,
+            border:'1px solid var(--color-border-tertiary)',
+            background:'var(--color-background-primary)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontWeight:500, fontSize:14 }}>{r.full_name}</div>
+                <div style={{ fontSize:12, color:'var(--color-text-secondary)', marginTop:2 }}>
+                  {r.email} · {r.phone} · {r.business_name} ({r.business_niche}) · {r.city}
+                </div>
+                {r.message && (
+                  <div style={{ fontSize:12, marginTop:6, padding:'6px 10px',
+                    background:'var(--color-background-secondary)', borderRadius:6, fontStyle:'italic' }}>
+                    "{r.message}"
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:500, whiteSpace:'nowrap',
+                background:`${STATUS_COLOR[r.status]}20`, color:STATUS_COLOR[r.status] }}>{r.status}</span>
+            </div>
+            <div style={{ display:'flex', gap:6, marginTop:10, flexWrap:'wrap' }}>
+              {r.status === 'pending' && (
+                <button type="button" onClick={() => advance(r.id,'contacted')} disabled={saving===r.id}
+                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                    background:'var(--color-text-primary)', color:'var(--color-background-primary)', border:'none' }}>
+                  Contactar
+                </button>
+              )}
+              {(r.status === 'contacted' || r.status === 'demo_scheduled') && (
+                <button type="button" onClick={() => sendInvite(r)} disabled={saving===r.id}
+                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                    background:'#16a34a', color:'#fff', border:'none' }}>
+                  Aprobar y enviar invitación
+                </button>
+              )}
+              {!['converted','rejected'].includes(r.status) && (
+                <button type="button" onClick={() => advance(r.id,'rejected')} disabled={saving===r.id}
+                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                    background:'transparent', color:'#dc2626',
+                    border:'1px solid #dc2626' }}>
+                  Rechazar
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+    </div>
+  )
+}
+
+function TenantsTab({ plans }) {
+  const [tenants, setTenants] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [form, setForm] = React.useState({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', notes:'' })
+  const [plan, setPlan] = React.useState('growth')
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const [sb, setSb] = React.useState(null)
+
+  React.useEffect(() => {
+    import('../../../shared/supabase/client').then(({ supabase }) => {
+      setSb(supabase)
+      supabase.from('tenants')
+        .select('*, tenant_subscriptions(plan_id,status), stores(count)')
+        .order('created_at', { ascending: false })
+        .then(({ data }) => { setTenants(data ?? []); setLoading(false) })
+    })
+  }, [])
+
+  async function createTenant(e) {
+    e.preventDefault(); setSaving(true); setError('')
+    try {
+      const { data: t, error: te } = await sb.from('tenants').insert({
+        ...form, status:'active', monthly_fee:0,
+      }).select().single()
+      if (te) throw te
+      await sb.from('tenant_subscriptions').insert({
+        tenant_id: t.id, plan_id: plan, status:'active',
+        current_period_end: new Date(Date.now()+30*86400000).toISOString(),
+      })
+      setForm({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', notes:'' })
+      setTenants(prev => [t, ...prev])
+    } catch(e) { setError(e.message) }
+    setSaving(false)
+  }
+
+  async function toggleStatus(t) {
+    const next = t.status === 'active' ? 'suspended' : 'active'
+    await sb.from('tenants').update({ status:next }).eq('id', t.id)
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x, status:next} : x))
+  }
+
+  const planLabel = id => plans.find(p => p.id===id)?.name ?? id
+
+  return (
+    <Grid>
+      <Panel title="Nuevo Tenant">
+        {error && <Notice tone="error">{error}</Notice>}
+        <Form onSubmit={createTenant}>
+          <FormGrid>
+            <Field label="Nombre *"><input className={controlDeckStyles.input} required
+              value={form.name} onChange={e => {
+                const name = e.target.value
+                setForm(f => ({ ...f, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') }))
+              }} placeholder="Panadería Demo" /></Field>
+            <Field label="Slug *"><input className={controlDeckStyles.input} required
+              value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-') }))}
+              placeholder="panaderia-demo" /></Field>
+            <Field label="Dueño"><input className={controlDeckStyles.input}
+              value={form.owner_name} onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))}
+              placeholder="Laura Morales" /></Field>
+            <Field label="Email"><input className={controlDeckStyles.input} type="email"
+              value={form.owner_email} onChange={e => setForm(f => ({ ...f, owner_email: e.target.value }))}
+              placeholder="laura@negocio.com" /></Field>
+            <Field label="Teléfono"><input className={controlDeckStyles.input}
+              value={form.owner_phone} onChange={e => setForm(f => ({ ...f, owner_phone: e.target.value }))}
+              placeholder="+57 300 000 0000" /></Field>
+            <Field label="Plan SaaS">
+              <select className={controlDeckStyles.select} value={plan} onChange={e => setPlan(e.target.value)}>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+          </FormGrid>
+          <Actions>
+            <Button type="submit" disabled={saving}>{saving ? 'Creando...' : 'Crear Tenant'}</Button>
+          </Actions>
+        </Form>
+      </Panel>
+      <Panel title={`Tenants (${tenants.length})`} dark>
+        {loading ? <Notice>Cargando...</Notice> : tenants.map(t => {
+          const sub = t.tenant_subscriptions?.[0]
+          const stores = t.stores?.[0]?.count ?? 0
+          return (
+            <div key={t.id} style={{ padding:'10px 0', borderBottom:'1px solid var(--color-border-tertiary)',
+              display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+              <div>
+                <div style={{ fontWeight:500, fontSize:13 }}>{t.name}</div>
+                <div style={{ fontSize:11, color:'var(--color-text-secondary)', marginTop:2 }}>
+                  {t.owner_email} · {stores} tienda{stores!==1?'s':''} · {planLabel(sub?.plan_id)}
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
+                <span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, fontWeight:500,
+                  background: t.status==='active'?'#dcfce7':'#fef2f2',
+                  color: t.status==='active'?'#16a34a':'#dc2626' }}>{t.status}</span>
+                <GhostButton type="button" style={{ fontSize:11, padding:'3px 8px' }}
+                  onClick={() => toggleStatus(t)}>
+                  {t.status==='active'?'Suspender':'Activar'}
+                </GhostButton>
+              </div>
+            </div>
+          )
+        })}
+      </Panel>
+    </Grid>
   )
 }

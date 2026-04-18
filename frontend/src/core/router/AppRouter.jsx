@@ -4,45 +4,31 @@ import { AuthProvider } from '../providers/AuthProvider'
 import { ProtectedRoute } from '../guards/ProtectedRoute'
 import AppLayout from '../app/AppLayout'
 
-// Auth
-import LoginPage from '../../modules/auth/pages/LoginPage'
+import LoginPage        from '../../modules/auth/pages/LoginPage'
 import UnauthorizedPage from '../../modules/auth/pages/UnauthorizedPage'
+import StaffLoginPage   from '../../modules/auth/pages/StaffLoginPage'
 
-// Super Admin
-import LandingPage from '../../modules/admin/pages/LandingPage'
+import LandingPage    from '../../modules/admin/pages/LandingPage'
 import SuperAdminPage from '../../modules/admin/pages/SuperAdminPage'
 import OnboardingPage from '../../modules/admin/pages/OnboardingPage'
 
-// Tenant
-import TenantAdminPage from '../../modules/tenant/pages/TenantAdminPage'
+import TenantAdminPage    from '../../modules/tenant/pages/TenantAdminPage'
 import TenantAffiliatesPage from '../../modules/tenant/pages/TenantAffiliatesPage'
 
-// Branch — operaciones y panel completo
-import BranchAdminPage from '../../modules/branch/pages/BranchAdminPage'
+import BranchAdminPage   from '../../modules/branch/pages/BranchAdminPage'
 import BranchKitchenPage from '../../modules/branch/pages/BranchKitchenPage'
-import BranchRidersPage from '../../modules/branch/pages/BranchRidersPage'
+import BranchRidersPage  from '../../modules/branch/pages/BranchRidersPage'
 
-// Public storefront
 import PublicMenuPage from '../../modules/public-menu/pages/PublicMenuPage'
 
-// Legacy (sin guards por compatibilidad)
-import LegacyAdminPage from '../../legacy/pages/Admin'
-import LegacyMenuPage from '../../legacy/pages/Menu'
+import LegacyAdminPage   from '../../legacy/pages/Admin'
+import LegacyMenuPage    from '../../legacy/pages/Menu'
 import LegacyKitchenPage from '../../legacy/pages/Pedidos'
-import LegacyRidersPage from '../../legacy/pages/Repartidor'
-import LegacySuperPage from '../../legacy/pages/OxidianPage'
+import LegacyRidersPage  from '../../legacy/pages/Repartidor'
+import LegacySuperPage   from '../../legacy/pages/OxidianPage'
 
-/**
- * AuthRoot — Envuelve todo el árbol de rutas con AuthProvider.
- * AuthProvider necesita estar dentro de RouterProvider para poder
- * usar useNavigate, de ahí este wrapper en la raíz del árbol.
- */
 function AuthRoot() {
-  return (
-    <AuthProvider>
-      <Outlet />
-    </AuthProvider>
-  )
+  return <AuthProvider><Outlet /></AuthProvider>
 }
 
 export const appRouter = createBrowserRouter([
@@ -53,42 +39,36 @@ export const appRouter = createBrowserRouter([
         path: '/',
         element: <AppLayout />,
         children: [
-          // ── Públicas ────────────────────────────────────────────
           { index: true, element: <LandingPage /> },
           { path: 'login', element: <LoginPage /> },
           { path: 'unauthorized', element: <UnauthorizedPage /> },
-          {
-            path: 'storefront/menu',
-            element: <PublicMenuPage />,
-          },
-          {
-            path: 's/:storeSlug/menu',
-            element: <PublicMenuPage />,
-          },
 
-          // ── Super Admin ─────────────────────────────────────────
+          // ── Staff login por sede (URL única) ─────────────────
+          { path: 's/:storeSlug/:branchSlug/login', element: <StaffLoginPage /> },
+
+          // ── Menú público ────────────────────────────────────
+          { path: 'storefront/menu', element: <PublicMenuPage /> },
+          { path: 's/:storeSlug/menu', element: <PublicMenuPage /> },
+
+          // ── Super Admin ─────────────────────────────────────
           {
             path: 'admin',
-            element: (
-              <ProtectedRoute roles={['super_admin']}>
-                <SuperAdminPage />
-              </ProtectedRoute>
-            ),
+            element: <ProtectedRoute roles={['super_admin']}><SuperAdminPage /></ProtectedRoute>,
           },
           {
             path: 'onboarding',
             element: (
-              <ProtectedRoute roles={['super_admin']}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','tenant_admin']}>
                 <OnboardingPage />
               </ProtectedRoute>
             ),
           },
 
-          // ── Tenant ──────────────────────────────────────────────
+          // ── Tenant ──────────────────────────────────────────
           {
             path: 'tenant/admin',
             element: (
-              <ProtectedRoute roles={['super_admin', 'tenant_owner', 'tenant_admin', 'store_admin']}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','tenant_admin','store_admin']}>
                 <TenantAdminPage />
               </ProtectedRoute>
             ),
@@ -96,20 +76,17 @@ export const appRouter = createBrowserRouter([
           {
             path: 'tenant/affiliates',
             element: (
-              <ProtectedRoute roles={['super_admin', 'tenant_owner', 'tenant_admin']}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','tenant_admin']}>
                 <TenantAffiliatesPage />
               </ProtectedRoute>
             ),
           },
 
-          // ── Branch — panel completo ──────────────────────────────
+          // ── Branch ──────────────────────────────────────────
           {
             path: 'branch/admin',
             element: (
-              <ProtectedRoute roles={[
-                'super_admin', 'tenant_owner', 'store_admin',
-                'store_operator', 'branch_manager', 'cashier',
-              ]}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','store_admin','store_operator','branch_manager','cashier']}>
                 <BranchAdminPage />
               </ProtectedRoute>
             ),
@@ -117,10 +94,7 @@ export const appRouter = createBrowserRouter([
           {
             path: 'branch/kitchen',
             element: (
-              <ProtectedRoute roles={[
-                'super_admin', 'tenant_owner', 'store_admin',
-                'branch_manager', 'kitchen',
-              ]}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','store_admin','branch_manager','kitchen']}>
                 <BranchKitchenPage />
               </ProtectedRoute>
             ),
@@ -128,29 +102,24 @@ export const appRouter = createBrowserRouter([
           {
             path: 'branch/riders',
             element: (
-              <ProtectedRoute roles={[
-                'super_admin', 'tenant_owner', 'store_admin',
-                'branch_manager', 'rider',
-              ]}>
+              <ProtectedRoute roles={['super_admin','tenant_owner','store_admin','branch_manager','rider']}>
                 <BranchRidersPage />
               </ProtectedRoute>
             ),
           },
 
-          // ── Legacy (sin guards — compatibilidad) ─────────────────
-          { path: 'legacy/admin', element: <LegacyAdminPage /> },
-          { path: 'legacy/menu', element: <LegacyMenuPage /> },
-          { path: 'legacy/pedidos', element: <LegacyKitchenPage /> },
+          // ── Legacy ──────────────────────────────────────────
+          { path: 'legacy/admin',      element: <LegacyAdminPage /> },
+          { path: 'legacy/menu',       element: <LegacyMenuPage /> },
+          { path: 'legacy/pedidos',    element: <LegacyKitchenPage /> },
           { path: 'legacy/repartidor', element: <LegacyRidersPage /> },
-          { path: 'legacy/super', element: <LegacySuperPage /> },
+          { path: 'legacy/super',      element: <LegacySuperPage /> },
 
-          // ── Redirects ────────────────────────────────────────────
-          { path: 'menu', element: <Navigate to="/storefront/menu" replace /> },
-          { path: 'pedidos', element: <Navigate to="/branch/kitchen" replace /> },
+          // ── Redirects ────────────────────────────────────────
+          { path: 'menu',       element: <Navigate to="/storefront/menu" replace /> },
+          { path: 'pedidos',    element: <Navigate to="/branch/kitchen" replace /> },
           { path: 'repartidor', element: <Navigate to="/branch/riders" replace /> },
-
-          // ── 404 ──────────────────────────────────────────────────
-          { path: '*', element: <Navigate to="/" replace /> },
+          { path: '*',          element: <Navigate to="/" replace /> },
         ],
       },
     ],
