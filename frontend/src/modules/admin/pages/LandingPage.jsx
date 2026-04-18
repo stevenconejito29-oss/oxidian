@@ -36,10 +36,8 @@ export default function LandingPage() {
         <Panel dark title="Entrar al sistema" text="Rutas principales para validar la nueva base antes de empezar el refactor profundo de cada módulo.">
           <QuickLinks
             links={[
-              { emoji: '🧠', title: 'Super Admin', text: 'Crear y clonar tiendas con panel nuevo.', href: '/admin' },
-              { emoji: '🏬', title: 'Tenant Admin', text: 'Panel nuevo del dueño para la marca activa.', href: '/tenant/admin' },
-            { emoji: '🍽️', title: 'Storefront', text: 'Menu público conectado al store activo.', href: '/storefront/menu' },
-              { emoji: '📦', title: 'Branch Ops', text: 'Entradas rápidas a cocina y reparto.', href: '/branch/kitchen' },
+              { emoji: '🔐', title: 'Login', text: 'Acceso autenticado para super admin, dueños y staff.', href: '/login' },
+              { emoji: '🍽️', title: 'Storefront', text: 'Menu público conectado al store activo.', href: '/storefront/menu' },
             ]}
           />
         </Panel>

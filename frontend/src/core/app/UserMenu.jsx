@@ -10,7 +10,6 @@ const NAV_LINKS = {
   ],
   tenant_owner: [
     { to: '/tenant/admin', label: '🏬 Mi tienda' },
-    { to: '/tenant/affiliates', label: '🔗 Afiliados' },
     { to: '/branch/admin', label: '📍 Sede' },
   ],
   tenant_admin: [
@@ -21,8 +20,6 @@ const NAV_LINKS = {
   store_operator: [{ to: '/branch/admin', label: '📍 Panel sede' }],
   branch_manager: [
     { to: '/branch/admin',   label: '📍 Mi sede' },
-    { to: '/branch/kitchen', label: '🍽️ Cocina' },
-    { to: '/branch/riders',  label: '🛵 Reparto' },
   ],
   kitchen: [{ to: '/branch/kitchen', label: '🍽️ Cocina' }],
   rider:   [{ to: '/branch/riders',  label: '🛵 Reparto' }],

@@ -6,6 +6,7 @@ import {
   saveStoreBundle,
 } from '../../../legacy/lib/storeManagement'
 import { BUSINESS_TYPES } from '../../../legacy/lib/storeConfig'
+import { adminApi } from '../../../shared/lib/backofficeApi'
 import {
   Actions,
   BadgeRow,
@@ -27,6 +28,7 @@ import ChatbotAuthManager from '../components/ChatbotAuthManager'
 
 const ADMIN_TABS = [
   { id: 'stores', label: '🏪 Tiendas' },
+  { id: 'owners', label: '👑 Dueños' },
   { id: 'chatbot', label: '🤖 Chatbot Auth' },
   { id: 'links', label: '🧭 Accesos rápidos' },
 ]
@@ -41,6 +43,14 @@ const INITIAL_FORM = {
   plan_id: 'growth',
   source_store_id: 'default',
   notes: '',
+}
+
+const INITIAL_OWNER_FORM = {
+  tenant_id: '',
+  role: 'tenant_owner',
+  full_name: '',
+  email: '',
+  password: '',
 }
 
 function buildStatusCount(stores = []) {
@@ -78,11 +88,18 @@ function TabBar({ active, onChange }) {
 
 export default function SuperAdminPage() {
   const [catalog, setCatalog] = React.useState({ stores: [], plans: [], missingSchema: false })
+  const [tenants, setTenants] = React.useState([])
+  const [ownerAccounts, setOwnerAccounts] = React.useState([])
   const [loading, setLoading] = React.useState(true)
+  const [ownersLoading, setOwnersLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  const [ownerError, setOwnerError] = React.useState('')
   const [form, setForm] = React.useState(INITIAL_FORM)
+  const [ownerForm, setOwnerForm] = React.useState(INITIAL_OWNER_FORM)
   const [saving, setSaving] = React.useState(false)
+  const [ownerSaving, setOwnerSaving] = React.useState(false)
   const [result, setResult] = React.useState(null)
+  const [ownerResult, setOwnerResult] = React.useState(null)
   const [activeTab, setActiveTab] = React.useState('stores')
 
   const refreshCatalog = React.useCallback(async () => {
@@ -101,6 +118,31 @@ export default function SuperAdminPage() {
   React.useEffect(() => {
     refreshCatalog()
   }, [refreshCatalog])
+
+  const refreshOwners = React.useCallback(async () => {
+    setOwnersLoading(true)
+    setOwnerError('')
+    try {
+      const [nextTenants, nextOwners] = await Promise.all([
+        adminApi('GET', '/tenants'),
+        adminApi('GET', '/accounts/owners'),
+      ])
+      setTenants(nextTenants || [])
+      setOwnerAccounts(nextOwners || [])
+      setOwnerForm(current => ({
+        ...current,
+        tenant_id: current.tenant_id || nextTenants?.[0]?.id || '',
+      }))
+    } catch (nextError) {
+      setOwnerError(nextError?.message || 'No se pudieron cargar las cuentas de dueños.')
+    } finally {
+      setOwnersLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    refreshOwners()
+  }, [refreshOwners])
 
   const statusCount = buildStatusCount(catalog.stores)
   const plans = catalog.plans.length > 0 ? catalog.plans : [{ id: 'growth', name: 'Growth' }]
@@ -128,6 +170,49 @@ export default function SuperAdminPage() {
       setError(nextError?.message || 'No se pudo crear la tienda.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleOwnerSubmit(event) {
+    event.preventDefault()
+    setOwnerSaving(true)
+    setOwnerError('')
+    setOwnerResult(null)
+    try {
+      const created = await adminApi('POST', '/accounts/owners', ownerForm)
+      setOwnerResult(created)
+      setOwnerForm(current => ({
+        ...INITIAL_OWNER_FORM,
+        tenant_id: current.tenant_id || ownerForm.tenant_id,
+      }))
+      await refreshOwners()
+    } catch (nextError) {
+      setOwnerError(nextError?.message || 'No se pudo crear la cuenta del dueño.')
+    } finally {
+      setOwnerSaving(false)
+    }
+  }
+
+  async function handleOwnerStatusChange(account, isActive) {
+    setOwnerError('')
+    try {
+      await adminApi('PATCH', `/accounts/owners/${account.membership_id}`, { is_active: isActive })
+      await refreshOwners()
+    } catch (nextError) {
+      setOwnerError(nextError?.message || 'No se pudo actualizar la cuenta.')
+    }
+  }
+
+  async function handleOwnerPasswordReset(account) {
+    const nextPassword = window.prompt(`Nueva password para ${account.email}`, '')
+    if (!nextPassword) return
+    setOwnerError('')
+    try {
+      await adminApi('PATCH', `/accounts/owners/${account.membership_id}`, { password: nextPassword })
+      setOwnerResult({ email: account.email, passwordReset: true })
+      await refreshOwners()
+    } catch (nextError) {
+      setOwnerError(nextError?.message || 'No se pudo actualizar la password.')
     }
   }
 
@@ -279,6 +364,126 @@ export default function SuperAdminPage() {
       )}
 
       {/* ── Tab: Chatbot Auth ─────────────────────────────────── */}
+      {activeTab === 'owners' && (
+        <Grid>
+          <Panel title="Crear cuentas de dueños" text="El super admin gestiona tenant owner y tenant admin sin tocar SQL manual.">
+            {ownerError && <Notice tone="error">{ownerError}</Notice>}
+            {ownerResult && (
+              <Notice tone="success">
+                Cuenta lista para <strong>{ownerResult.email}</strong>.
+              </Notice>
+            )}
+            <Form onSubmit={handleOwnerSubmit}>
+              <FormGrid>
+                <Field label="Tenant">
+                  <select
+                    className={controlDeckStyles.select}
+                    value={ownerForm.tenant_id}
+                    onChange={e => setOwnerForm(current => ({ ...current, tenant_id: e.target.value }))}
+                    required
+                  >
+                    <option value="">Selecciona un tenant</option>
+                    {tenants.map(tenant => (
+                      <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rol">
+                  <select
+                    className={controlDeckStyles.select}
+                    value={ownerForm.role}
+                    onChange={e => setOwnerForm(current => ({ ...current, role: e.target.value }))}
+                  >
+                    <option value="tenant_owner">tenant_owner</option>
+                    <option value="tenant_admin">tenant_admin</option>
+                  </select>
+                </Field>
+                <Field label="Nombre completo">
+                  <input
+                    className={controlDeckStyles.input}
+                    value={ownerForm.full_name}
+                    onChange={e => setOwnerForm(current => ({ ...current, full_name: e.target.value }))}
+                    placeholder="Maria Perez"
+                  />
+                </Field>
+                <Field label="Email">
+                  <input
+                    className={controlDeckStyles.input}
+                    type="email"
+                    value={ownerForm.email}
+                    onChange={e => setOwnerForm(current => ({ ...current, email: e.target.value }))}
+                    placeholder="dueno@marca.com"
+                    required
+                  />
+                </Field>
+                <Field label="Password inicial">
+                  <input
+                    className={controlDeckStyles.input}
+                    type="text"
+                    value={ownerForm.password}
+                    onChange={e => setOwnerForm(current => ({ ...current, password: e.target.value }))}
+                    placeholder="Minimo 8 caracteres"
+                    required
+                  />
+                </Field>
+              </FormGrid>
+              <Actions>
+                <Button disabled={ownerSaving} type="submit">
+                  {ownerSaving ? 'Guardando cuenta...' : 'Crear cuenta'}
+                </Button>
+                <GhostButton
+                  type="button"
+                  onClick={() => setOwnerForm(current => ({
+                    ...INITIAL_OWNER_FORM,
+                    tenant_id: current.tenant_id,
+                  }))}
+                >
+                  Limpiar
+                </GhostButton>
+              </Actions>
+            </Form>
+          </Panel>
+
+          <Panel title="Dueños y admins de tenant" text="Control de acceso para las cuentas que gobiernan cada negocio." dark>
+            {ownersLoading ? <Notice>Cargando cuentas...</Notice> : null}
+            {!ownersLoading && ownerAccounts.length === 0 ? (
+              <Notice>No hay cuentas registradas todavia.</Notice>
+            ) : null}
+            {!ownersLoading && ownerAccounts.length > 0 ? (
+              <div className={controlDeckStyles.list}>
+                {ownerAccounts.map(account => (
+                  <article className={controlDeckStyles.listCard} key={account.membership_id}>
+                    <div className={controlDeckStyles.listTop}>
+                      <div>
+                        <h3 className={controlDeckStyles.listTitle}>{account.full_name || account.email}</h3>
+                        <p className={controlDeckStyles.listMeta}>
+                          {account.email} · {account.tenant_name || 'Tenant sin nombre'}
+                        </p>
+                      </div>
+                      <span className={controlDeckStyles.badge}>
+                        {account.is_active ? 'activo' : 'pausado'}
+                      </span>
+                    </div>
+                    <BadgeRow items={[
+                      account.role,
+                      account.last_sign_in_at ? 'ya entro' : 'sin login',
+                    ]} />
+                    <Actions>
+                      <GhostButton type="button" onClick={() => handleOwnerStatusChange(account, !account.is_active)}>
+                        {account.is_active ? 'Pausar acceso' : 'Reactivar acceso'}
+                      </GhostButton>
+                      <GhostButton type="button" onClick={() => handleOwnerPasswordReset(account)}>
+                        Resetear password
+                      </GhostButton>
+                    </Actions>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </Panel>
+        </Grid>
+      )}
+
       {activeTab === 'chatbot' && (
         <Panel
           title="Autorización de chatbot portable"
@@ -293,11 +498,9 @@ export default function SuperAdminPage() {
         <Grid>
           <Panel title="Accesos del sistema" text="Navegación directa a los módulos principales.">
             <QuickLinks links={[
-              { emoji: '🧭', title: 'Tenant admin', text: 'Panel del dueño con módulos operativos.', href: '/tenant/admin' },
-              { emoji: '📍', title: 'Branch admin', text: 'Panel completo de sede con 12 módulos.', href: '/branch/admin' },
+              { emoji: '🧭', title: 'Tenant admin', text: 'Panel del dueño para crear staff y gobernar la marca.', href: '/tenant/admin' },
+              { emoji: '📍', title: 'Branch admin', text: 'Panel de sede donde viven cocina, reparto y afiliados.', href: '/branch/admin' },
               { emoji: '🍽️', title: 'Storefront', text: 'Menú público conectado al store activo.', href: '/storefront/menu' },
-              { emoji: '📦', title: 'Cocina', text: 'Cola de preparación en tiempo real.', href: '/branch/kitchen' },
-              { emoji: '🛵', title: 'Reparto', text: 'Panel de riders y despacho.', href: '/branch/riders' },
               { emoji: '🧪', title: 'Legacy admin', text: 'Interfaz anterior para referencia.', href: '/legacy/admin' },
             ]} />
           </Panel>

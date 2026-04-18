@@ -1,10 +1,11 @@
 import React from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../legacy/lib/supabase'
 import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
 import { useAuth } from '../../../core/providers/AuthProvider'
 import {
   Actions, BadgeRow, Button, Field, Form, FormGrid,
-  GhostButton, Grid, Hero, Notice, Panel, Shell, Stats,
+  GhostButton, Grid, Hero, Notice, Panel, QuickLinks, Shell, Stats,
   controlDeckStyles,
 } from '../../../shared/ui/ControlDeck'
 
@@ -109,6 +110,15 @@ function DashboardTab({ branchId, storeId }) {
           { label: 'Staff online', value: String(data.staff_online || 0), hint: 'Personal activo ahora' },
           { label: 'Stock bajo', value: String(data.low_stock_count || 0), hint: 'Artículos con poco inventario' },
         ]} />
+      </Panel>
+      <Panel title="Vistas operativas de la sede">
+        <QuickLinks
+          links={[
+            { emoji: '🍽️', title: 'Preparación', text: 'Vista dedicada de cocina para esta sede.', href: `/branch/kitchen?branch=${encodeURIComponent(branchId)}&store=${encodeURIComponent(storeId)}` },
+            { emoji: '🛵', title: 'Reparto', text: 'Vista de riders y despacho de esta sede.', href: `/branch/riders?branch=${encodeURIComponent(branchId)}&store=${encodeURIComponent(storeId)}` },
+            { emoji: '🔗', title: 'Afiliados', text: 'Gestión comercial desde el tab de afiliados del panel.', href: '/branch/admin?tab=affiliates' },
+          ]}
+        />
       </Panel>
       <Panel title="Artículos con stock bajo" dark>
         {data.low_stock_items?.length
@@ -919,8 +929,16 @@ function ChatbotTab({ branchId, storeId }) {
 
 export default function BranchAdminPage() {
   const { branchId, storeId, tenantId, role } = useAuth()
-  const [activeTab, setActiveTab] = React.useState('dashboard')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = React.useState(searchParams.get('tab') || 'dashboard')
   const [branchName, setBranchName] = React.useState('Mi Sede')
+
+  React.useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab && TABS.some(item => item.id === tab)) {
+      setActiveTab(tab)
+    }
+  }, [searchParams])
 
   React.useEffect(() => {
     if (!branchId) return
@@ -964,7 +982,12 @@ export default function BranchAdminPage() {
           { label: 'Tienda', value: storeId || '—' },
         ]}
       />
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar active={activeTab} onChange={nextTab => {
+        setActiveTab(nextTab)
+        const next = new URLSearchParams(searchParams)
+        next.set('tab', nextTab)
+        setSearchParams(next)
+      }} />
       <div style={{ minHeight: 400 }}>
         {tabContent[activeTab] || null}
       </div>

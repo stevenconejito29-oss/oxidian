@@ -22,6 +22,8 @@
 - Se separo el cliente de auth (`supabaseAuth`) del cliente scoped por `appSession` para evitar el error de `onAuthStateChange` con `accessToken`.
 - Existe documentacion operativa local para roles y visibilidad en `docs/architecture/ROLE_ACCESS_NOTE.md`.
 - Existe un seed SQL local para perfilar todos los roles en `scripts/seed_role_profiles.sql`.
+- Existe un SQL dedicado para acceso total de prueba de un solo usuario en `scripts/grant_full_access_pepemellamoyoo.sql`.
+- Existe un helper local soportado por la Admin API de Supabase para crear usuarios de Auth: `scripts/create_auth_user.py`.
 
 ## Hallazgos de arquitectura y despliegue
 
@@ -82,3 +84,49 @@
 - Rotar `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` y cualquier secreto comprometido.
 - Sacar definitivamente `frontend/.env.production` del control de versiones mediante commit.
 - Replicar variables criticas tambien en `Preview` si se quiere validar flujos no productivos en Vercel.
+
+## Iteracion 2026-04-18 - gestion de cuentas y visibilidad por rol
+
+### Implementado
+
+- Backend:
+  - Se creo `backend/app/core/accounts.py` para centralizar llamadas al Supabase Admin API con `httpx`.
+  - `POST /admin/accounts/owners` ya crea o reactiva usuarios Auth y les asigna `tenant_owner` o `tenant_admin`.
+  - `GET /admin/accounts/owners` lista cuentas de dueños/admins de tenant con tenant, email y estado.
+  - `PATCH /admin/accounts/owners/<member_id>` permite pausar/reactivar acceso y resetear password.
+  - `POST /tenant/accounts/staff` ya crea o reactiva cuentas de staff con scope `tenant`, `store` o `branch`.
+  - `GET /tenant/accounts/staff` lista staff del tenant.
+  - `PATCH /tenant/accounts/staff/<member_id>` permite pausar/reactivar acceso y resetear password.
+  - Se reforzo `tenant/routes.py` para que solo `super_admin`, `tenant_owner` o `tenant_admin` puedan gestionar cuentas y membresias del tenant.
+
+### Frontend
+
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+  - Nuevo tab de dueños.
+  - Formulario para crear cuentas de `tenant_owner` y `tenant_admin`.
+  - Listado de cuentas con acciones de pausar/reactivar y reset de password.
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - Se eliminaron accesos directos a cocina, reparto y afiliados desde la vista del dueño.
+  - Nuevo bloque de creacion de staff por rol y alcance.
+  - Nuevo bloque de gestion de staff con acciones de estado y reset de password.
+- `frontend/src/modules/admin/pages/LandingPage.jsx`
+  - Se limpiaron links internos. El landing ahora expone `login` y `storefront`, no vistas operativas.
+- `frontend/src/core/app/UserMenu.jsx`
+  - Se removieron links globales a afiliados desde `tenant_owner`.
+  - Se removieron links globales a cocina y reparto desde `branch_manager`.
+- `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
+  - Se agrego un bloque de accesos operativos dentro del propio panel de sede.
+  - Ya admite `?tab=affiliates` para abrir el tab interno de afiliados desde la misma vista administrativa.
+- `frontend/src/shared/lib/backofficeApi.js`
+  - Helper comun para consumir `/admin/*` y `/tenant/*` con el token actual.
+
+### Validacion
+
+- `python -m compileall backend/app` equivalente: correcto.
+- `npm run build` en `frontend`: correcto.
+
+### Riesgos y notas
+
+- La creacion de usuarios depende de que `SUPABASE_SERVICE_ROLE_KEY` siga presente y valido en `backend/.env`.
+- No se desplego este corte todavia.
+- No se añadieron tablas nuevas; por eso `database_schema.sql` no requirio cambios estructurales en esta iteracion.

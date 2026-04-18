@@ -10,6 +10,14 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, abort, g, jsonify, request, send_file
 
+from ...core.accounts import (
+    OWNER_ROLES,
+    create_or_update_auth_user,
+    hydrate_membership_rows,
+    normalize_auth_user,
+    update_auth_user,
+    upsert_membership,
+)
 from ...core.extensions import limiter, supabase_admin
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -19,6 +27,10 @@ def _supa():
     if not supabase_admin:
         abort(503, "Supabase no configurado")
     return supabase_admin
+
+
+def _clean_text(value):
+    return str(value or "").strip()
 
 
 # ─── Health ───────────────────────────────────────────────────────
@@ -280,6 +292,110 @@ def delete_member(member_id):
     sb = _supa()
     sb.table("user_memberships").delete().eq("id", member_id).execute()
     return jsonify({"deleted": True, "id": member_id})
+
+
+# Cuentas de duenos y admins de tenant
+
+@admin_bp.get("/accounts/owners")
+@limiter.limit("60 per minute")
+def list_owner_accounts():
+    sb = _supa()
+    memberships = sb.table("user_memberships").select("*").in_(
+        "role", list(OWNER_ROLES)
+    ).order("created_at", desc=True).execute()
+    return jsonify(hydrate_membership_rows(sb, memberships.data or []))
+
+
+@admin_bp.post("/accounts/owners")
+@limiter.limit("20 per minute")
+def create_owner_account():
+    sb = _supa()
+    body = request.get_json(silent=True) or {}
+    tenant_id = body.get("tenant_id")
+    role = _clean_text(body.get("role") or "tenant_owner")
+    email = _clean_text(body.get("email")).lower()
+    password = str(body.get("password") or "")
+    full_name = _clean_text(body.get("full_name"))
+
+    if role not in OWNER_ROLES:
+        abort(400, "Rol invalido para esta cuenta")
+    if not tenant_id:
+        abort(400, "tenant_id requerido")
+    if not email or not password:
+        abort(400, "email y password requeridos")
+
+    tenant = sb.table("tenants").select("id,name").eq("id", tenant_id).maybe_single().execute().data
+    if not tenant:
+        abort(404, "Tenant no encontrado")
+
+    try:
+        auth_result = create_or_update_auth_user(email, password, full_name=full_name)
+        auth_user = normalize_auth_user(auth_result["user"])
+        membership = upsert_membership(
+            sb,
+            user_id=auth_user["user_id"],
+            role=role,
+            tenant_id=tenant_id,
+            store_id=None,
+            branch_id=None,
+            metadata={"full_name": full_name, "created_by": g.auth_context.user_id},
+        )
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    if role == "tenant_owner":
+        tenant_patch = {"owner_email": email}
+        if full_name:
+            tenant_patch["owner_name"] = full_name
+        sb.table("tenants").update(tenant_patch).eq("id", tenant_id).execute()
+
+    response = {
+        "created": bool(auth_result["created"]),
+        "membership_id": membership.get("id"),
+        "role": role,
+        "tenant_id": tenant_id,
+        "tenant_name": tenant["name"],
+        **auth_user,
+        "is_active": bool(membership.get("is_active", True)),
+    }
+    return jsonify(response), 201 if auth_result["created"] else 200
+
+
+@admin_bp.patch("/accounts/owners/<member_id>")
+@limiter.limit("30 per minute")
+def update_owner_account(member_id):
+    sb = _supa()
+    body = request.get_json(silent=True) or {}
+    membership_res = sb.table("user_memberships").select("*").eq("id", member_id).maybe_single().execute()
+    membership = membership_res.data
+    if not membership or membership.get("role") not in OWNER_ROLES:
+        abort(404, "Cuenta de owner no encontrada")
+
+    patch = {}
+    if "is_active" in body:
+        patch["is_active"] = bool(body.get("is_active"))
+    if patch:
+        sb.table("user_memberships").update(patch).eq("id", member_id).execute()
+
+    full_name = _clean_text(body.get("full_name"))
+    password = str(body.get("password") or "")
+    try:
+        auth_user = normalize_auth_user(update_auth_user(
+            membership["user_id"],
+            password=password or None,
+            full_name=full_name or None,
+        ))
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    updated = sb.table("user_memberships").select("*").eq("id", member_id).maybe_single().execute().data or membership
+    return jsonify({
+        "membership_id": updated.get("id"),
+        "role": updated.get("role"),
+        "tenant_id": updated.get("tenant_id"),
+        "is_active": bool(updated.get("is_active")),
+        **auth_user,
+    })
 
 
 # ─── Chatbot — Autorización ───────────────────────────────────────

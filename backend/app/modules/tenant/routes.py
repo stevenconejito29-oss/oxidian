@@ -6,6 +6,14 @@ from __future__ import annotations
 
 from flask import Blueprint, abort, g, jsonify, request
 
+from ...core.accounts import (
+    STAFF_ROLES,
+    create_or_update_auth_user,
+    hydrate_membership_rows,
+    normalize_auth_user,
+    update_auth_user,
+    upsert_membership,
+)
 from ...core.extensions import supabase_admin
 
 
@@ -20,6 +28,15 @@ def _supa():
 
 def _scope():
     return g.scope
+
+
+def _clean_text(value):
+    return str(value or "").strip()
+
+
+def _require_tenant_manager():
+    if g.auth_context.app_role not in {"super_admin", "tenant_owner", "tenant_admin"}:
+        abort(403, "Ruta reservada para owner/admin del tenant")
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -290,6 +307,7 @@ def create_cash_entry():
 
 @tenant_bp.get("/members")
 def list_tenant_members():
+    _require_tenant_manager()
     sb = _supa()
     scope = _scope()
     res = sb.table("user_memberships").select("*").eq(
@@ -300,6 +318,7 @@ def list_tenant_members():
 
 @tenant_bp.post("/members")
 def invite_tenant_member():
+    _require_tenant_manager()
     sb = _supa()
     scope = _scope()
     body = request.get_json(silent=True) or {}
@@ -326,12 +345,135 @@ def invite_tenant_member():
 
 @tenant_bp.delete("/members/<member_id>")
 def remove_tenant_member(member_id):
+    _require_tenant_manager()
     sb = _supa()
     scope = _scope()
     sb.table("user_memberships").delete().eq("id", member_id).eq(
         "tenant_id", scope["tenant_id"]
     ).execute()
     return jsonify({"deleted": True})
+
+
+@tenant_bp.get("/accounts/staff")
+def list_staff_accounts():
+    _require_tenant_manager()
+    sb = _supa()
+    scope = _scope()
+    memberships = sb.table("user_memberships").select("*").eq(
+        "tenant_id", scope["tenant_id"]
+    ).in_("role", list(STAFF_ROLES)).order("created_at", desc=True).execute()
+    return jsonify(hydrate_membership_rows(sb, memberships.data or []))
+
+
+@tenant_bp.post("/accounts/staff")
+def create_staff_account():
+    _require_tenant_manager()
+    sb = _supa()
+    scope = _scope()
+    body = request.get_json(silent=True) or {}
+
+    role = _clean_text(body.get("role"))
+    email = _clean_text(body.get("email")).lower()
+    password = str(body.get("password") or "")
+    full_name = _clean_text(body.get("full_name"))
+    tenant_id = scope["tenant_id"]
+    store_id = body.get("store_id") or scope.get("store_id")
+    branch_id = body.get("branch_id") or scope.get("branch_id")
+
+    if role not in STAFF_ROLES:
+        abort(403, f"No puedes asignar el rol {role}")
+    if not email or not password:
+        abort(400, "email y password requeridos")
+
+    if role in {"tenant_admin"}:
+        store_id = None
+        branch_id = None
+    elif role in {"store_admin", "store_operator"}:
+        if not store_id:
+            abort(400, "store_id requerido para roles de tienda")
+        branch_id = None
+    else:
+        if not store_id:
+            abort(400, "store_id requerido para roles operativos")
+        if not branch_id:
+            abort(400, "branch_id requerido para roles operativos")
+
+    if store_id:
+        store = sb.table("stores").select("id,tenant_id").eq("id", store_id).maybe_single().execute().data
+        if not store or store.get("tenant_id") != tenant_id:
+            abort(400, "La tienda no pertenece al tenant activo")
+    if branch_id:
+        branch = sb.table("branches").select("id,tenant_id,store_id").eq("id", branch_id).maybe_single().execute().data
+        if not branch or branch.get("tenant_id") != tenant_id:
+            abort(400, "La sede no pertenece al tenant activo")
+        if branch.get("store_id") != store_id:
+            abort(400, "La sede no coincide con la tienda seleccionada")
+
+    try:
+        auth_result = create_or_update_auth_user(email, password, full_name=full_name)
+        auth_user = normalize_auth_user(auth_result["user"])
+        membership = upsert_membership(
+            sb,
+            user_id=auth_user["user_id"],
+            role=role,
+            tenant_id=tenant_id,
+            store_id=store_id,
+            branch_id=branch_id,
+            metadata={"full_name": full_name, "created_by": g.auth_context.user_id},
+        )
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    return jsonify({
+        "created": bool(auth_result["created"]),
+        "membership_id": membership.get("id"),
+        "role": role,
+        "tenant_id": tenant_id,
+        "store_id": store_id,
+        "branch_id": branch_id,
+        "is_active": bool(membership.get("is_active", True)),
+        **auth_user,
+    }), 201 if auth_result["created"] else 200
+
+
+@tenant_bp.patch("/accounts/staff/<member_id>")
+def update_staff_account(member_id):
+    _require_tenant_manager()
+    sb = _supa()
+    scope = _scope()
+    body = request.get_json(silent=True) or {}
+
+    membership = sb.table("user_memberships").select("*").eq("id", member_id).maybe_single().execute().data
+    if not membership or membership.get("tenant_id") != scope["tenant_id"] or membership.get("role") not in STAFF_ROLES:
+        abort(404, "Cuenta de staff no encontrada")
+
+    patch = {}
+    if "is_active" in body:
+        patch["is_active"] = bool(body.get("is_active"))
+    if patch:
+        sb.table("user_memberships").update(patch).eq("id", member_id).execute()
+
+    full_name = _clean_text(body.get("full_name"))
+    password = str(body.get("password") or "")
+    try:
+        auth_user = normalize_auth_user(update_auth_user(
+            membership["user_id"],
+            password=password or None,
+            full_name=full_name or None,
+        ))
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    updated = sb.table("user_memberships").select("*").eq("id", member_id).maybe_single().execute().data or membership
+    return jsonify({
+        "membership_id": updated.get("id"),
+        "role": updated.get("role"),
+        "tenant_id": updated.get("tenant_id"),
+        "store_id": updated.get("store_id"),
+        "branch_id": updated.get("branch_id"),
+        "is_active": bool(updated.get("is_active")),
+        **auth_user,
+    })
 
 
 # ─── Chatbot — estado por tienda ──────────────────────────────────────────────
