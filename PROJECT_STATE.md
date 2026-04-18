@@ -3,6 +3,7 @@
 ## Fecha
 
 - 2026-04-17
+- 2026-04-18
 
 ## Estado actual
 
@@ -13,6 +14,11 @@
 - El proyecto `oxidian` ya esta conectado al repo GitHub `stevenconejito29-oss/oxidian`.
 - El `Root Directory` remoto de Vercel fue corregido a `frontend`.
 - Se verifico un deployment productivo `READY` via Git/deploy hook sobre el commit `46509b1`.
+- Revision de memoria externa (`AGENTS.md`, `MEMORY_LOG.md`, parches y hooks en `C:\Users\steven\Downloads\codex`) contrastada contra el repo real.
+- El login por `supabase.auth.signInWithPassword()` y magic link existe y el `AuthProvider` ya escucha sesion nativa de Supabase.
+- El acceso a vistas protegidas sigue dependiendo de filas validas en `public.user_memberships`.
+- Existe un bootstrap SQL local para asignar accesos en una sola corrida: `scripts/bootstrap_access_users.sql`.
+- El bootstrap SQL de accesos ahora autodetecta `tenant`, `store` y `branch` si las referencias de ejemplo no existen.
 
 ## Hallazgos de arquitectura y despliegue
 
@@ -28,6 +34,13 @@
 - El deploy hook compartido por el usuario pertenece al proyecto `oxidian`; se uso para forzar un redeploy del mismo commit despues de corregir `Root Directory`.
 - Se corrigio `vercel.json` de raiz eliminando un BOM UTF-8 que hacia que Vercel lo reportara como JSON invalido.
 - La documentacion oficial de Vercel indica que para desplegar frontend + backend como un solo proyecto se necesita `experimentalServices` y framework `Services`; hoy el camino estable del proyecto sigue siendo desplegar `frontend` como raiz del proyecto Vercel.
+- La memoria externa esta parcialmente desfasada respecto al repo:
+  - `AuthProvider` fix ya esta aplicado.
+  - `useStoreModules` y `useFeatureFlag` ya existen en `frontend/src/shared/hooks/`.
+  - `ModuleGate.jsx` no existe todavia.
+  - `BranchAdminPage.jsx` sigue con tabs fijos, sin filtrado por modulos.
+  - `SuperAdminPage.jsx` sigue parcial; no tiene tabs `tenants`, `pipeline` ni `plans`.
+  - En el repo no existen migraciones `0005`, `0006`, `0007`; la memoria las menciona como trabajo externo no integrado.
 
 ## Hallazgos de seguridad
 
@@ -58,6 +71,9 @@
 - Consolidar una estrategia unica de despliegue Vercel:
   - mantener `frontend` como proyecto actual estable
   - o redisenar a `Services` si se quiere desplegar backend y frontend juntos desde raiz
+- Confirmar en Supabase SQL Editor que existen usuarios en `auth.users` y membresias en `public.user_memberships` antes de probar login por rol.
+- Crear usuarios reales por Auth y luego asignar roles con `make_super_admin()` o `invite_member()`.
+- Ajustar y ejecutar `scripts/bootstrap_access_users.sql` con correos reales para poblar `user_memberships` sin UUIDs manuales.
 - Ejecutar y validar en Supabase el esquema canonico real (`RESET_COMPLETE.sql` y parches faltantes).
 - Revisar grants/policies de `store_templates`, `tenants` y tablas jerarquicas.
 - Rotar `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` y cualquier secreto comprometido.
