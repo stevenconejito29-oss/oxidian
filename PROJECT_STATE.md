@@ -20,6 +20,8 @@
 - Existe un bootstrap SQL local para asignar accesos en una sola corrida: `scripts/bootstrap_access_users.sql`.
 - El bootstrap SQL de accesos ahora autodetecta `tenant`, `store` y `branch` si las referencias de ejemplo no existen.
 - Se separo el cliente de auth (`supabaseAuth`) del cliente scoped por `appSession` para evitar el error de `onAuthStateChange` con `accessToken`.
+- Existe documentacion operativa local para roles y visibilidad en `docs/architecture/ROLE_ACCESS_NOTE.md`.
+- Existe un seed SQL local para perfilar todos los roles en `scripts/seed_role_profiles.sql`.
 
 ## Hallazgos de arquitectura y despliegue
 
