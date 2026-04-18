@@ -7,6 +7,7 @@ import {
 } from '../../../legacy/lib/storeManagement'
 import { BUSINESS_TYPES } from '../../../legacy/lib/storeConfig'
 import { adminApi } from '../../../shared/lib/backofficeApi'
+import { supabaseAuth } from '../../../shared/supabase/client'
 import {
   Actions,
   BadgeRow,
@@ -513,21 +514,18 @@ export default function SuperAdminPage() {
 
 function OverviewTab({ storeCount, statusCount, planCount }) {
   const [metrics, setMetrics] = React.useState(null)
-  const { supabase: sb } = React.useMemo(() => ({ supabase: null }), [])
 
   React.useEffect(() => {
-    import('../../../shared/supabase/client').then(({ supabase }) => {
-      Promise.all([
-        supabase.from('tenants').select('id', { count: 'exact', head: true }),
-        supabase.from('branches').select('id', { count: 'exact', head: true }),
-        supabase.from('landing_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('orders').select('id', { count: 'exact', head: true })
-          .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
-      ]).then(([t, b, l, o]) => setMetrics({
-        tenants: t.count ?? 0, branches: b.count ?? 0,
-        leads: l.count ?? 0, orders24h: o.count ?? 0,
-      }))
-    })
+    Promise.all([
+      supabaseAuth.from('tenants').select('id', { count: 'exact', head: true }),
+      supabaseAuth.from('branches').select('id', { count: 'exact', head: true }),
+      supabaseAuth.from('landing_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabaseAuth.from('orders').select('id', { count: 'exact', head: true })
+        .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
+    ]).then(([t, b, l, o]) => setMetrics({
+      tenants: t.count ?? 0, branches: b.count ?? 0,
+      leads: l.count ?? 0, orders24h: o.count ?? 0,
+    }))
   }, [])
 
   return (
@@ -553,39 +551,44 @@ function PipelineTab() {
   const [loading,  setLoading]  = React.useState(true)
   const [filter,   setFilter]   = React.useState('pending')
   const [saving,   setSaving]   = React.useState(null)
-  const [sb, setSb] = React.useState(null)
 
   React.useEffect(() => {
-    import('../../../shared/supabase/client').then(({ supabase }) => {
-      setSb(supabase)
-      supabase.from('landing_requests').select('*').order('created_at', { ascending: false })
-        .then(({ data }) => { setRequests(data ?? []); setLoading(false) })
-    })
+    supabaseAuth.from('landing_requests').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { setRequests(data ?? []); setLoading(false) })
   }, [])
 
   async function advance(id, status) {
-    if (!sb) return
     setSaving(id)
     const patch = { status, updated_at: new Date().toISOString() }
-    if (status === 'contacted')  patch.contacted_at = new Date().toISOString()
-    if (status === 'converted')  patch.converted_at = new Date().toISOString()
-    await sb.from('landing_requests').update(patch).eq('id', id)
+    if (status === 'contacted') patch.contacted_at = new Date().toISOString()
+    if (status === 'converted') patch.converted_at = new Date().toISOString()
+    await supabaseAuth.from('landing_requests').update(patch).eq('id', id)
     setRequests(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
     setSaving(null)
   }
 
   async function sendInvite(r) {
-    const ok = window.confirm(`Enviar invitación a ${r.email}?\nEntrarán en /onboarding para configurar su tienda.`)
+    const ok = window.confirm(
+      `Aprobar y enviar enlace a ${r.email}?\n\n` +
+      `Recibiran un link magico para entrar directamente al wizard de configuracion de su tienda.`
+    )
     if (!ok) return
     setSaving(r.id)
     try {
-      await adminApi('POST', `/pipeline/${r.id}/invite`, {
-        redirectTo: `${window.location.origin}/onboarding`,
+      const { error } = await supabaseAuth.auth.signInWithOtp({
+        email: r.email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/onboarding`,
+        },
       })
-      setRequests(rs => rs.map(item => item.id === r.id
-        ? { ...item, status: 'onboarding', updated_at: new Date().toISOString() }
-        : item))
-      window.alert('Invitación enviada. El usuario recibirá el email para crear su cuenta.')
+      if (error) throw error
+      await advance(r.id, 'onboarding')
+      window.alert(
+        `Enlace enviado a ${r.email}.\n` +
+        `El usuario hara clic y llegara al wizard para configurar su tienda.\n\n` +
+        `Si no llega el email, verifica la configuracion de Supabase Auth > Email Templates.`
+      )
     } catch (e) { window.alert('Error: ' + e.message) }
     setSaving(null)
   }
@@ -666,26 +669,22 @@ function TenantsTab({ plans }) {
   const [plan, setPlan] = React.useState('growth')
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState('')
-  const [sb, setSb] = React.useState(null)
 
   React.useEffect(() => {
-    import('../../../shared/supabase/client').then(({ supabase }) => {
-      setSb(supabase)
-      supabase.from('tenants')
-        .select('*, tenant_subscriptions(plan_id,status), stores(count)')
-        .order('created_at', { ascending: false })
-        .then(({ data }) => { setTenants(data ?? []); setLoading(false) })
-    })
+    supabaseAuth.from('tenants')
+      .select('*, tenant_subscriptions(plan_id,status), stores(count)')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { setTenants(data ?? []); setLoading(false) })
   }, [])
 
   async function createTenant(e) {
     e.preventDefault(); setSaving(true); setError('')
     try {
-      const { data: t, error: te } = await sb.from('tenants').insert({
+      const { data: t, error: te } = await supabaseAuth.from('tenants').insert({
         ...form, status:'active', monthly_fee:0,
       }).select().single()
       if (te) throw te
-      await sb.from('tenant_subscriptions').insert({
+      await supabaseAuth.from('tenant_subscriptions').insert({
         tenant_id: t.id, plan_id: plan, status:'active',
         current_period_end: new Date(Date.now()+30*86400000).toISOString(),
       })
@@ -697,7 +696,7 @@ function TenantsTab({ plans }) {
 
   async function toggleStatus(t) {
     const next = t.status === 'active' ? 'suspended' : 'active'
-    await sb.from('tenants').update({ status:next }).eq('id', t.id)
+    await supabaseAuth.from('tenants').update({ status:next }).eq('id', t.id)
     setTenants(prev => prev.map(x => x.id===t.id ? {...x, status:next} : x))
   }
 

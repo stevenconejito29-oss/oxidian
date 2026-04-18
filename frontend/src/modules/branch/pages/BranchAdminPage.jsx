@@ -1021,12 +1021,19 @@ function VariantsTab({ config }) {
 }
 
 export default function BranchAdminPage() {
-  const { branchId, storeId, tenantId, role } = useAuth()
+  const { branchId: jwtBranchId, storeId, tenantId, role } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = React.useState(searchParams.get('tab') || 'dashboard')
   const [branchName, setBranchName] = React.useState('Mi Sede')
   const [storeSlug, setStoreSlug] = React.useState('')
   const [branchSlug, setBranchSlug] = React.useState('')
+
+  // Selector de sede para roles sin branchId en el JWT (tenant_owner, store_admin sin asignación)
+  const [selectedBranchId, setSelectedBranchId] = React.useState(null)
+  const [availableBranches, setAvailableBranches] = React.useState([])
+  const [loadingBranches, setLoadingBranches] = React.useState(false)
+  const branchId = jwtBranchId || selectedBranchId
+
   const { isEnabled, getConfig, loading: modulesLoading } = useStoreModules()
 
   // Tabs dinámicos según módulos activos
@@ -1034,9 +1041,25 @@ export default function BranchAdminPage() {
     ? ALL_TABS.filter(t => t.module === null)
     : ALL_TABS.filter(t => !t.module || isEnabled(t.module))
 
+  // Cargar sedes disponibles cuando el JWT no trae branchId
+  React.useEffect(() => {
+    if (jwtBranchId) return                       // Ya lo tiene del JWT, no hace falta
+    const query = storeId
+      ? supabase.from('branches').select('id, name, city').eq('store_id', storeId).eq('status', 'active')
+      : tenantId
+        ? supabase.from('branches').select('id, name, city').eq('tenant_id', tenantId).eq('status', 'active')
+        : null
+    if (!query) return
+    setLoadingBranches(true)
+    query.order('name').then(({ data }) => {
+      setAvailableBranches(data ?? [])
+      if (data?.length === 1) setSelectedBranchId(data[0].id)  // Auto-seleccionar si solo hay una
+    }).finally(() => setLoadingBranches(false))
+  }, [jwtBranchId, storeId, tenantId])
+
   React.useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab && TABS.some(item => item.id === tab)) {
+    if (tab && ALL_TABS.some(item => item.id === tab)) {
       setActiveTab(tab)
     }
   }, [searchParams])
@@ -1052,11 +1075,41 @@ export default function BranchAdminPage() {
   }, [branchId])
 
   if (!branchId) {
+    // Mostrar selector de sede en lugar de error genérico
     return (
       <Shell>
-        <Notice tone="error">
-          Tu cuenta no tiene una sede asignada. Contacta con el administrador.
-        </Notice>
+        <Hero
+          eyebrow="Panel de Sede"
+          title="Selecciona una sede"
+          description="Tu cuenta no tiene una sede asignada por defecto. Elige la sede que quieres gestionar."
+        />
+        {loadingBranches && <Notice>Cargando sedes disponibles...</Notice>}
+        {!loadingBranches && availableBranches.length === 0 && (
+          <Notice tone="error">
+            No hay sedes disponibles para tu cuenta. Contacta con el administrador.
+          </Notice>
+        )}
+        {!loadingBranches && availableBranches.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
+            {availableBranches.map(b => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setSelectedBranchId(b.id)}
+                style={{
+                  padding: '16px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                  border: '1px solid var(--color-border-secondary)',
+                  background: 'var(--color-background-primary)',
+                  fontFamily: 'inherit', transition: '.15s',
+                }}
+              >
+                <div style={{ fontSize: 22, marginBottom: 6 }}>🏪</div>
+                <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--color-text-primary)' }}>{b.name}</div>
+                {b.city && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{b.city}</div>}
+              </button>
+            ))}
+          </div>
+        )}
       </Shell>
     )
   }
@@ -1091,6 +1144,15 @@ export default function BranchAdminPage() {
           { label: 'Tienda', value: storeId || '—' },
         ]}
       />
+      {/* Si el branchId viene de selección manual (no del JWT), mostrar opción de cambiar */}
+      {!jwtBranchId && selectedBranchId && (
+        <div style={{ marginBottom: 12 }}>
+          <GhostButton type="button" style={{ fontSize: 12, padding: '4px 12px' }}
+            onClick={() => setSelectedBranchId(null)}>
+            ← Cambiar sede
+          </GhostButton>
+        </div>
+      )}
       <TabBar tabs={visibleTabs} active={activeTab} onChange={nextTab => {
         setActiveTab(nextTab)
         const next = new URLSearchParams(searchParams)

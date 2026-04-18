@@ -208,7 +208,7 @@ function ListoStep({ storeId, branchId, navigate }) {
         </div>
       </div>
       <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-        <button style={btn(true)} onClick={() => navigate('/branch/admin')}>Ir a mi panel →</button>
+        <button style={btn(true)} onClick={() => navigate('/tenant/admin')}>Ir a mi panel →</button>
         <button style={btn(false)} onClick={() => window.open(`/s/${storeId}/menu`)}>Ver menú público</button>
       </div>
     </div>

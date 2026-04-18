@@ -81,7 +81,60 @@
 
 ---
 
-## PENDIENTES INMEDIATOS
+## 2026-04-19 — Fixes post-sesión: selector de sede + redirect onboarding
+
+### BUG FIX — BranchAdminPage: selector de sede cuando branchId es null
+**Síntoma**: un `store_admin` o `tenant_owner` sin `branch_id` en el JWT veía un error en lugar de poder elegir sede.
+**Causa**: la página hacía `if (!branchId) return <Notice tone="error">...` sin dar alternativa.
+**Solución aplicada**:
+- Renombrado `branchId` de `useAuth()` a `jwtBranchId`.
+- Añadido estado local `selectedBranchId` + `availableBranches`.
+- `branchId` efectivo = `jwtBranchId || selectedBranchId`.
+- `useEffect` carga sedes desde Supabase filtrando por `store_id` (si existe) o `tenant_id`.
+- Si solo hay una sede disponible → se auto-selecciona.
+- El guard `if (!branchId)` ahora muestra una grilla de tarjetas de sedes seleccionables.
+- Cuando el branchId viene de selección manual se muestra botón "← Cambiar sede" en el Hero.
+**Archivo**: `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
+**Resultado**: APLICADO
+
+### BUG FIX — OnboardingPage: redirigir a /tenant/admin después del onboarding
+**Síntoma**: el botón "Ir a mi panel →" del paso final redirigía a `/branch/admin`, que requiere `branch_id` en el JWT — del que el usuario recién creado (rol `tenant_owner`) no dispone.
+**Causa**: hardcoded `navigate('/branch/admin')` en `ListoStep`.
+**Solución**: cambiado a `navigate('/tenant/admin')`.
+**Archivo**: `frontend/src/modules/admin/pages/OnboardingPage.jsx`
+**Resultado**: APLICADO
+
+---
+
+## Resumen de archivos modificados (2026-04-19)
+
+| Archivo | Acción |
+|---|---|
+| `src/modules/branch/pages/BranchAdminPage.jsx` | Fix: selector de sede + jwtBranchId/effectiveBranchId |
+| `src/modules/admin/pages/OnboardingPage.jsx` | Fix: redirect a /tenant/admin |
+| `MEMORY_LOG.md` | Este archivo |
+
+---
+
+## PENDIENTES ACTUALIZADOS (2026-04-19)
+
+### ⚡ EJECUTAR EN SUPABASE (si aún no se ha hecho)
+- [ ] `supabase/migrations/0007_modules_engine.sql`
+- [ ] `UPDATE stores SET slug = id WHERE slug IS NULL;`
+
+### 🔧 inviteUserByEmail → mover al backend Flask
+- Ver sección "PENDIENTES ACTUALIZADOS (2026-04-18)" → el botón del Pipeline falla silenciosamente.
+- Ruta sugerida: `POST /api/admin/invite-tenant` con `@require_super_admin`.
+
+### 🔧 DashboardTab → reemplazar llamada Flask por query Supabase directa
+- Si el backend Flask no está corriendo el dashboard queda vacío.
+- Fix: query directa `supabase.from('orders').select(...).eq('store_id', storeId)`.
+
+### 🔧 BranchKitchenPage — filtrar por branch_id
+- `useRealtimeOrders` filtra por `store_id` pero no `branch_id`.
+- Añadir `.eq('branch_id', branchId)` cuando `branchId` no sea null.
+
+
 
 ### ⚡ Ejecutar en Supabase
 - [ ] Ejecutar `0007_modules_engine.sql` en Supabase SQL Editor
