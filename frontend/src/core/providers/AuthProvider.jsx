@@ -66,14 +66,14 @@ export function AuthProvider({ children }) {
         .eq('is_active', true)
 
       if (error) {
-        console.warn('[AuthProvider] loadMembership error:', error.message)
-        // Si falla con recursión RLS, reintentar
+        const errMsg = `[${error.code}] ${error.message} | hint: ${error.hint || '-'} | details: ${error.details || '-'}`
+        console.error('[AuthProvider] loadMembership error:', errMsg)
         if (retryCount < MAX_MEMBERSHIP_RETRIES) {
           await sleep(MEMBERSHIP_RETRY_DELAY_MS)
           return loadMembership(userId, retryCount + 1)
         }
         setMembership(null)
-        setAuthError('membership_load_failed')
+        setAuthError('membership_load_failed:' + errMsg)
         return
       }
 

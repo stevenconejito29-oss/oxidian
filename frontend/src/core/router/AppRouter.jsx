@@ -44,9 +44,13 @@ function SessionErrorScreen({ authError, retryLoadMembership }) {
 
   const messages = {
     membership_not_found:  'Tu cuenta no tiene un rol asignado. Contacta al administrador.',
-    membership_load_failed: 'Error temporal al verificar tu sesión. Intenta de nuevo.',
+    membership_load_failed: 'Error al verificar la sesión.',
     membership_exception:   'Error inesperado al cargar tu sesión.',
   }
+
+  // Extraer el mensaje técnico si viene incluido (formato 'membership_load_failed:...')
+  const rawDetail = authError?.includes(':') ? authError.split(':').slice(1).join(':') : null
+  const baseKey   = authError?.split(':')[0] || authError
 
   return (
     <div style={{
@@ -60,9 +64,16 @@ function SessionErrorScreen({ authError, retryLoadMembership }) {
       }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>⚠️</div>
         <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Problema con la sesión</h2>
-        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
-          {messages[authError] || 'No se pudo cargar tu perfil de acceso.'}
+        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: rawDetail ? 8 : 24 }}>
+          {messages[baseKey] || 'No se pudo cargar tu perfil de acceso.'}
         </p>
+        {rawDetail && (
+          <pre style={{
+            fontSize: 11, background: '#1a1a1a', color: '#f87171',
+            borderRadius: 8, padding: '10px 12px', marginBottom: 20,
+            textAlign: 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>{rawDetail}</pre>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
           <button onClick={handleRetry} disabled={retrying} style={{
             padding: '9px 20px', borderRadius: 8, border: 'none',
