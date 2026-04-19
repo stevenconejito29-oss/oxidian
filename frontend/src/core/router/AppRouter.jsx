@@ -1,6 +1,7 @@
 import React from 'react'
 import { Navigate, createBrowserRouter, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from '../providers/AuthProvider'
+import { PlanProvider } from '../../shared/hooks/usePlan'
 import { ProtectedRoute } from '../guards/ProtectedRoute'
 import { ROLE_HOME } from './roleHome'
 import AppLayout from '../app/AppLayout'

@@ -10,6 +10,9 @@ import {
   getTenantDashboard, getTenantPlan,
 } from '../../../shared/lib/supabaseApi'
 import { supabaseAuth } from '../../../shared/supabase/client'
+import { usePlan } from '../../../shared/hooks/usePlan'
+import FeatureGate, { LimitGate, PlanBadge } from '../../../shared/ui/FeatureGate'
+import { FEATURES } from '../../../shared/lib/planFeatures'
 
 // ─── UI base ─────────────────────────────────────────────────────
 function Btn({ children, onClick, disabled, variant='primary', size='md', type='button', style={} }) {
@@ -202,6 +205,8 @@ export default function TenantAdminPage() {
 
   React.useEffect(() => { load() }, [load])
 
+  const { can, canCreateMore, plan, FEATURES: F } = usePlan()
+  
   if (!tenantId) return (
     <div style={{ padding:24 }}>
       <Alert>Esta cuenta no tiene tenant asignado. Contacta al administrador.</Alert>
@@ -209,7 +214,7 @@ export default function TenantAdminPage() {
   )
 
   return (
-    <DashboardLayout activeTab={tab} onTabChange={setTab} title="Panel del negocio" subtitle={`Plan ${planId}`}>
+    <DashboardLayout activeTab={tab} onTabChange={setTab} title="Panel del negocio" subtitle={<PlanBadge />}>
       {/* Stats rápidos */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))', gap:12, marginBottom:20 }}>
         <StatCard label="Plan"       value={planId}                    icon="💎" />
