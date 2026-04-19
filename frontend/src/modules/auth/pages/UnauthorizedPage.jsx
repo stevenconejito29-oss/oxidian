@@ -2,18 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../core/providers/AuthProvider'
 import { Shell, Hero, Notice } from '../../../shared/ui/ControlDeck'
-
-const ROLE_HOME = {
-  super_admin: '/admin',
-  tenant_owner: '/tenant/admin',
-  tenant_admin: '/tenant/admin',
-  store_admin: '/branch/admin',
-  store_operator: '/branch/admin',
-  branch_manager: '/branch/admin',
-  kitchen: '/branch/kitchen',
-  rider: '/branch/riders',
-  cashier: '/branch/admin',
-}
+import { ROLE_HOME } from '../../../core/router/roleHome'
 
 export default function UnauthorizedPage() {
   const { role, signOut } = useAuth()

@@ -37,6 +37,23 @@ function enforceUtf8Plugin() {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const localChatbotUrl = env.VITE_LOCAL_CHATBOT_URL?.trim()
+  const localBackendUrl = env.VITE_LOCAL_BACKEND_URL?.trim() || 'http://127.0.0.1:5000'
+  const proxy = {}
+
+  if (localChatbotUrl) {
+    proxy['/chatbot-proxy'] = {
+      target: localChatbotUrl,
+      changeOrigin: true,
+      rewrite: path => path.replace(/^\/chatbot-proxy/, ''),
+    }
+  }
+
+  ;['/admin', '/tenant', '/branch', '/store', '/public'].forEach((prefix) => {
+    proxy[prefix] = {
+      target: localBackendUrl,
+      changeOrigin: true,
+    }
+  })
 
   return {
   css: {
@@ -46,13 +63,7 @@ export default defineConfig(({ mode }) => {
 
   // ── Proxy local → Chatbot Local (evita CORS en desarrollo) ─────────
   server: {
-    proxy: localChatbotUrl ? {
-      '/chatbot-proxy': {
-        target: localChatbotUrl,
-        changeOrigin: true,
-        rewrite: path => path.replace(/^\/chatbot-proxy/, ''),
-      },
-    } : undefined,
+    proxy: Object.keys(proxy).length ? proxy : undefined,
   },
 
   build: {

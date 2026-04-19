@@ -2,18 +2,7 @@ import React from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../../legacy/lib/supabase'
 import { useAuth } from '../../../core/providers/AuthProvider'
-
-const ROLE_HOME = {
-  super_admin:    '/admin',
-  tenant_owner:   '/tenant/admin',
-  tenant_admin:   '/tenant/admin',
-  store_admin:    '/branch/admin',
-  store_operator: '/branch/admin',
-  branch_manager: '/branch/admin',
-  kitchen:        '/branch/kitchen',
-  rider:          '/branch/riders',
-  cashier:        '/branch/admin',
-}
+import { ROLE_HOME } from '../../../core/router/roleHome'
 
 const FEATURES = [
   { icon:'🏪', title:'Multi-tienda', desc:'Un dueño puede tener varias tiendas con nichos distintos desde una sola cuenta.' },

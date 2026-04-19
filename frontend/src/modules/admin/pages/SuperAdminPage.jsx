@@ -6,7 +6,12 @@ import {
   saveStoreBundle,
 } from '../../../legacy/lib/storeManagement'
 import { BUSINESS_TYPES } from '../../../legacy/lib/storeConfig'
-import { adminApi } from '../../../shared/lib/backofficeApi'
+import {
+  listTenants, createTenant, updateTenant,
+  listOwnerAccounts, createOwnerAccount, updateOwnerAccount,
+  getSuperAdminStats, listLandingRequests, updateLandingRequest,
+  inviteLandingRequest, listStores, getChatbotDownloadUrl,
+} from '../../../shared/lib/supabaseApi'
 import { supabaseAuth } from '../../../shared/supabase/client'
 import {
   Actions,
@@ -127,11 +132,11 @@ export default function SuperAdminPage() {
     setOwnerError('')
     try {
       const [nextTenants, nextOwners] = await Promise.all([
-        adminApi('GET', '/tenants'),
-        adminApi('GET', '/accounts/owners'),
+        listTenants(),
+        listOwnerAccounts(),
       ])
-      setTenants(nextTenants || [])
-      setOwnerAccounts(nextOwners || [])
+      setTenants(Array.isArray(nextTenants) ? nextTenants : [])
+      setOwnerAccounts(Array.isArray(nextOwners) ? nextOwners : [])
       setOwnerForm(current => ({
         ...current,
         tenant_id: current.tenant_id || nextTenants?.[0]?.id || '',
@@ -182,7 +187,7 @@ export default function SuperAdminPage() {
     setOwnerError('')
     setOwnerResult(null)
     try {
-      const created = await adminApi('POST', '/accounts/owners', ownerForm)
+      const created = await createOwnerAccount(ownerForm)
       setOwnerResult(created)
       setOwnerForm(current => ({
         ...INITIAL_OWNER_FORM,
@@ -199,7 +204,7 @@ export default function SuperAdminPage() {
   async function handleOwnerStatusChange(account, isActive) {
     setOwnerError('')
     try {
-      await adminApi('PATCH', `/accounts/owners/${account.membership_id}`, { is_active: isActive })
+      await updateOwnerAccount(account.membership_id, { is_active: isActive })
       await refreshOwners()
     } catch (nextError) {
       setOwnerError(nextError?.message || 'No se pudo actualizar la cuenta.')
@@ -211,7 +216,7 @@ export default function SuperAdminPage() {
     if (!nextPassword) return
     setOwnerError('')
     try {
-      await adminApi('PATCH', `/accounts/owners/${account.membership_id}`, { password: nextPassword })
+      await updateOwnerAccount(account.membership_id, { password: nextPassword })
       setOwnerResult({ email: account.email, passwordReset: true })
       await refreshOwners()
     } catch (nextError) {
@@ -575,9 +580,7 @@ function PipelineTab() {
     if (!ok) return
     setSaving(r.id)
     try {
-      await adminApi('POST', `/pipeline/${r.id}/invite`, {
-        redirectTo: `${window.location.origin}/onboarding`,
-      })
+      await inviteLandingRequest(r.id, `${window.location.origin}/onboarding`)
       setRequests(rs => rs.map(item => (
         item.id === r.id
           ? { ...item, status: 'onboarding', updated_at: new Date().toISOString() }

@@ -2,8 +2,75 @@
 
 ## Fecha
 
+- 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-19 - correccion canonica del panel del dueno y acceso local al backend
+
+### Implementado
+
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - Reescrito en limpio para eliminar codificacion rota y semantica mezclada.
+  - El alta de tiendas ya no mezcla `business_type` con `template_id`.
+  - Se limita a nichos canonicos del proyecto: `barbershop`, `fastfood`, `restaurant`, `minimarket`, `clothing`, `universal`.
+  - La creacion de tienda guarda una plantilla base valida para `store_templates` y deja la eleccion del estilo visual real al panel de personalizacion.
+  - La vista del dueno ahora explica claramente la diferencia entre `business_type`, plantilla base y estilo del menu.
+- `frontend/src/modules/tenant/lib/storeCatalog.js`
+  - Nueva capa canonica y testeable para mapear nichos, business types, plantilla base y estilo recomendado.
+- `frontend/tests/storeCatalog.test.mjs`
+  - Pruebas unitarias minimas para evitar volver a introducir `booking` como template inexistente o mezclar el dominio de tienda con el dominio visual.
+- `frontend/vite.config.js`
+  - Se agrego proxy local para `/admin`, `/tenant`, `/branch`, `/store` y `/public` apuntando a `VITE_LOCAL_BACKEND_URL` con fallback `http://127.0.0.1:5000`.
+  - Esto permite probar el backoffice en desarrollo sin depender de `VITE_BACKEND_URL`.
+- `frontend/.env` y `frontend/.env.example`
+  - Se retiraron secretos de servidor del frontend.
+  - El frontend conserva solo variables publicas `VITE_*`.
+  - La configuracion privada queda documentada y aislada en `backend/.env`.
+
+## Iteracion 2026-04-19 - endurecimiento del backend serverless y cierre de bugs criticos
+
+### Implementado
+
+- `api/index.py`
+  - Se elimino el fallback inseguro que aceptaba JWT sin verificar firma.
+  - Ahora el backend falla si `SUPABASE_JWT_SECRET` no existe, en lugar de abrir una via de bypass.
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+  - El Pipeline ya no llama `adminApi` inexistente.
+  - El envio de invitacion usa `inviteLandingRequest()` de `supabaseApi`.
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - Se reemplazo la version que seguia ofreciendo `booking` y mezclando `business_type` con `template_id`.
+  - La creacion de tiendas vuelve a depender del catalogo canonico en `storeCatalog.js`.
+  - La UI deja claro que `template_id` es la plantilla base persistida y que el estilo de menu real se ajusta en personalizacion.
+
+### Validacion esperada
+
+- El backend serverless ya no debe aceptar peticiones autenticadas si falta `SUPABASE_JWT_SECRET`.
+- El flujo `Pipeline -> Aprobar y enviar invitacion` ya no debe romper por `ReferenceError`.
+- La vista del dueno ya no debe insertar `booking` como `template_id` ni guardar `business_type = delivery/vitrina/...`.
+
+## Iteracion 2026-04-19 - SQL unico para Supabase
+
+### Nuevo archivo
+
+- `scripts/supabase_single_setup.sql`
+
+### Contenido
+
+- Consolida en una sola corrida:
+  - `supabase/migrations/RESET_COMPLETE.sql`
+  - `supabase/migrations/0005_testing_readiness.sql`
+  - `supabase/migrations/0006_fix_rls_auth_errors.sql`
+
+### Limite conocido
+
+- El repo actual no contiene `0007_modules_engine.sql`.
+- Por eso el archivo unico incluye todo el SQL real y verificable del proyecto, pero no puede incorporar ese SQL externo sin inventarlo.
+
+### Estado de pruebas
+
+- El frontend queda listo para pruebas funcionales locales si el Flask corre en `127.0.0.1:5000`.
+- En Vercel sigue siendo obligatorio configurar `VITE_BACKEND_URL` con la URL publica del backend; sin eso, el panel admin responde con error limpio pero no puede operar end-to-end.
 
 ## Estado actual
 
