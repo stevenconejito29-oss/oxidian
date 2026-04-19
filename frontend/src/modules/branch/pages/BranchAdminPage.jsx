@@ -1,1167 +1,817 @@
+/**
+ * BranchAdminPage.jsx — Panel de Administración de Sede
+ * Incluye: Dashboard, Productos, Pedidos, Staff, Marketing, Chatbot, Config
+ * Diseño moderno, responsive, formularios completos para cada nivel.
+ */
 import React from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { supabase } from '../../../legacy/lib/supabase'
-import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
+import { supabaseAuth } from '../../../shared/supabase/client'
 import { useAuth } from '../../../core/providers/AuthProvider'
-import { useStoreModules } from '../../../shared/hooks/useStoreModules'
+import DashboardLayout from '../../../core/app/DashboardLayout'
 import {
-  Actions, BadgeRow, Button, Field, Form, FormGrid,
-  GhostButton, Grid, Hero, Notice, Panel, QuickLinks, Shell, Stats,
-  controlDeckStyles,
-} from '../../../shared/ui/ControlDeck'
+  Card, Btn, Input, Select, Textarea, Alert, Avatar, StatGrid,
+  Grid2, Empty, Badge, StatusBadge, Divider,
+} from '../../../shared/ui/OxidianDS'
 
-// ─── API helper ───────────────────────────────────────────────────────────────
-
-const API = async (method, path, body) => {
-  const token = readCurrentSupabaseAccessToken()
-  const res = await fetch(`/branch${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+// ─── Helpers ──────────────────────────────────────────────────────
+function slugify(v) {
+  return String(v||'').toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-{2,}/g,'-').replace(/^-|-$/g,'')
 }
 
-// ─── Tabs config — ALL_TABS con módulo requerido (null = siempre visible) ────
-
-const ALL_TABS = [
-  { id: 'dashboard',    label: 'Dashboard',     module: null },
-  { id: 'products',     label: 'Productos',     module: 'mod_catalog' },
-  { id: 'combos',       label: 'Combos',        module: 'mod_combos' },
-  { id: 'orders',       label: 'Pedidos',       module: 'mod_orders' },
-  { id: 'appointments', label: 'Agenda',        module: 'mod_appointments' },
-  { id: 'tables',       label: 'Mesas',         module: 'mod_tables' },
-  { id: 'stock',        label: 'Inventario',    module: 'mod_inventory' },
-  { id: 'variants',     label: 'Tallas/Colores',module: 'mod_variants' },
-  { id: 'staff',        label: 'Staff',         module: 'mod_staff' },
-  { id: 'loyalty',      label: 'Fidelidad',     module: 'mod_loyalty' },
-  { id: 'affiliates',   label: 'Afiliados',     module: 'mod_affiliates' },
-  { id: 'marketing',    label: 'Marketing',     module: 'mod_coupons' },
-  { id: 'reviews',      label: 'Reseñas',       module: 'mod_reviews' },
-  { id: 'finance',      label: 'Finanzas',      module: 'mod_finance' },
-  { id: 'chatbot',      label: 'Chatbot',       module: 'mod_chatbot' },
-  { id: 'config',       label: 'Config',        module: null },
+const TABS = [
+  { id:'dashboard', icon:'📊', label:'Panel'       },
+  { id:'products',  icon:'🛍️', label:'Productos'   },
+  { id:'orders',    icon:'📦', label:'Pedidos'     },
+  { id:'staff',     icon:'👥', label:'Staff'       },
+  { id:'marketing', icon:'🏷️', label:'Marketing'  },
+  { id:'chatbot',   icon:'🤖', label:'Chatbot'     },
+  { id:'config',    icon:'⚙️', label:'Config'      },
 ]
 
-// ─── Componentes pequeños ────────────────────────────────────────────────────
-
-function TabBar({ tabs, active, onChange }) {
-  return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20,
-      padding: '4px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-      {tabs.map(tab => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          style={{
-            padding: '6px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-            border: active === tab.id ? 'none' : '1px solid var(--color-border-secondary)',
-            background: active === tab.id ? 'var(--color-text-primary)' : 'transparent',
-            color: active === tab.id ? 'var(--color-background-primary)' : 'var(--color-text-secondary)',
-            fontFamily: 'inherit', transition: '.15s',
-          }}
-        >{tab.label}</button>
-      ))}
-    </div>
-  )
+const ORDER_STATUS = ['pending','preparing','ready','delivering','delivered','cancelled']
+const STATUS_COLORS = {
+  pending:'#ca8a04', preparing:'#2563eb', ready:'#22c55e',
+  delivering:'#8b5cf6', delivered:'#16a34a', cancelled:'#dc2626',
 }
 
-function StatusBadge({ status }) {
-  const colors = {
-    active: '#16a34a', pending: '#ca8a04', preparing: '#2563eb',
-    ready: '#7c3aed', delivering: '#0891b2', delivered: '#059669',
-    cancelled: '#dc2626', paused: '#9ca3af', draft: '#9ca3af',
-  }
-  return (
-    <span style={{
-      background: `${colors[status] || '#9ca3af'}18`,
-      color: colors[status] || '#9ca3af',
-      fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20,
-    }}>{status}</span>
-  )
-}
+// ─── Main Page ────────────────────────────────────────────────────
+export default function BranchAdminPage() {
+  const [params] = useSearchParams()
+  const { tenantId, role, membership } = useAuth()
+  const storeId  = params.get('store_id') || params.get('store') || ''
+  const branchId = params.get('branch_id')|| params.get('branch')|| ''
 
-function EmptyState({ icon, message }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-secondary)', fontSize: 13 }}>
-      <div style={{ fontSize: 32, marginBottom: 8 }}>{icon}</div>
-      <div>{message}</div>
-    </div>
-  )
-}
-
-// ─── Tabs individuales ────────────────────────────────────────────────────────
-
-function DashboardTab({ branchId, storeId }) {
-  const [data, setData] = React.useState(null)
+  const [tab,      setTab]      = React.useState('dashboard')
+  const [branch,   setBranch]   = React.useState(null)
+  const [store,    setStore]    = React.useState(null)
+  const [loading,  setLoading]  = React.useState(true)
 
   React.useEffect(() => {
-    if (!branchId) return
-    API('GET', '/dashboard').then(setData).catch(console.error)
-  }, [branchId])
+    if (!storeId) return setLoading(false)
+    Promise.all([
+      branchId ? supabaseAuth.from('branches').select('*').eq('id', branchId).maybeSingle() : Promise.resolve({ data:null }),
+      supabaseAuth.from('stores').select('*').eq('id', storeId).maybeSingle(),
+    ]).then(([b, s]) => {
+      setBranch(b.data)
+      setStore(s.data)
+      setLoading(false)
+    })
+  }, [storeId, branchId])
 
-  if (!data) return <Notice>Cargando dashboard...</Notice>
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--color-text-secondary)' }}>
+      Cargando…
+    </div>
+  )
+
+  if (!storeId) return (
+    <div style={{ padding:24 }}>
+      <Alert type="warn">No se proporcionó store_id. Accede desde el panel del tenant.</Alert>
+    </div>
+  )
 
   return (
-    <Grid>
-      <Panel title="Resumen de hoy">
-        <Stats items={[
-          { label: 'Pedidos hoy', value: String(data.orders_today?.total || 0), hint: 'Todas las órdenes del día' },
-          { label: 'Staff online', value: String(data.staff_online || 0), hint: 'Personal activo ahora' },
-          { label: 'Stock bajo', value: String(data.low_stock_count || 0), hint: 'Artículos con poco inventario' },
-        ]} />
-      </Panel>
-      <Panel title="Vistas operativas de la sede">
-        <QuickLinks
-          links={[
-            { emoji: '🍽️', title: 'Preparación', text: 'Vista dedicada de cocina para esta sede.', href: `/branch/kitchen?branch=${encodeURIComponent(branchId)}&store=${encodeURIComponent(storeId)}` },
-            { emoji: '🛵', title: 'Reparto', text: 'Vista de riders y despacho de esta sede.', href: `/branch/riders?branch=${encodeURIComponent(branchId)}&store=${encodeURIComponent(storeId)}` },
-            { emoji: '🔗', title: 'Afiliados', text: 'Gestión comercial desde el tab de afiliados del panel.', href: '/branch/admin?tab=affiliates' },
-          ]}
-        />
-      </Panel>
-      <Panel title="Artículos con stock bajo" dark>
-        {data.low_stock_items?.length
-          ? data.low_stock_items.map(item => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between',
-                padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)', fontSize: 13 }}>
-                <span>{item.name}</span>
-                <span style={{ color: '#dc2626', fontWeight: 500 }}>{item.quantity} {item.unit || 'ud'}</span>
-              </div>
-            ))
-          : <Notice tone="success">Sin alertas de stock</Notice>
-        }
-      </Panel>
-    </Grid>
+    <DashboardLayout
+      activeTab={tab} onTabChange={setTab}
+      title={branch?.name || 'Sede'}
+      subtitle={store?.name}
+    >
+      {/* Tab bar */}
+      <div style={{
+        display:'flex', gap:4, marginBottom:20, flexWrap:'wrap',
+        background:'var(--color-background-primary)',
+        border:'1px solid var(--color-border-tertiary)',
+        borderRadius:12, padding:4,
+      }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding:'7px 14px', borderRadius:9, border:'none', cursor:'pointer',
+            fontSize:13, fontWeight:tab===t.id?600:400, fontFamily:'inherit',
+            background:tab===t.id?'var(--color-text-primary)':'transparent',
+            color:tab===t.id?'var(--color-background-primary)':'var(--color-text-secondary)',
+            display:'flex', alignItems:'center', gap:5, transition:'.15s',
+          }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'dashboard' && <DashboardTab branch={branch} store={store} storeId={storeId} branchId={branchId} />}
+      {tab === 'products'  && <ProductsTab  storeId={storeId} />}
+      {tab === 'orders'    && <OrdersTab    storeId={storeId} branchId={branchId} />}
+      {tab === 'staff'     && <StaffTab     storeId={storeId} branchId={branchId} store={store} branch={branch} />}
+      {tab === 'marketing' && <MarketingTab storeId={storeId} />}
+      {tab === 'chatbot'   && <ChatbotTab   branchId={branchId} storeId={storeId} />}
+      {tab === 'config'    && <ConfigTab    branch={branch} setBranch={setBranch} branchId={branchId} />}
+    </DashboardLayout>
   )
 }
 
-function ProductsTab({ storeId }) {
-  const [products, setProducts] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', price: '', category: 'general', emoji: '🍽️', description: '' })
-  const [editId, setEditId] = React.useState(null)
-  const [saving, setSaving] = React.useState(false)
-  const [error, setError] = React.useState('')
 
-  const load = () => {
-    setLoading(true)
-    API('GET', '/products?active=false').then(setProducts).catch(e => setError(e.message)).finally(() => setLoading(false))
-  }
+// ─── DASHBOARD TAB ────────────────────────────────────────────────
+function DashboardTab({ branch, store, storeId, branchId }) {
+  const [stats, setStats] = React.useState(null)
 
-  React.useEffect(load, [storeId])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true); setError('')
-    try {
-      if (editId) await API('PATCH', `/products/${editId}`, { ...form, price: Number(form.price) })
-      else await API('POST', '/products', { ...form, price: Number(form.price) })
-      setForm({ name: '', price: '', category: 'general', emoji: '🍽️', description: '' })
-      setEditId(null)
-      load()
-    } catch (err) { setError(err.message) }
-    setSaving(false)
-  }
-
-  async function toggleActive(product) {
-    await API('PATCH', `/products/${product.id}`, { is_active: !product.is_active })
-    load()
-  }
-
-  async function deleteProduct(id) {
-    if (!confirm('¿Eliminar este producto?')) return
-    await API('DELETE', `/products/${id}`)
-    load()
-  }
+  React.useEffect(() => {
+    if (!storeId) return
+    const since = new Date(Date.now()-86400000).toISOString()
+    Promise.all([
+      supabaseAuth.from('orders').select('id,total,status').eq('store_id',storeId).gte('created_at',since),
+      supabaseAuth.from('staff_users').select('id,is_online').eq('store_id',storeId),
+      supabaseAuth.from('stock_items').select('id,name,quantity,min_quantity').eq('store_id',storeId),
+    ]).then(([orders, staff, stock]) => {
+      const os   = orders.data||[]
+      const sdf  = staff.data||[]
+      const stk  = stock.data||[]
+      setStats({
+        orders_today:   os.length,
+        revenue_today:  os.filter(o=>o.status!=='cancelled').reduce((s,o)=>s+Number(o.total||0),0).toFixed(2),
+        pending:        os.filter(o=>o.status==='pending').length,
+        staff_online:   sdf.filter(s=>s.is_online).length,
+        low_stock:      stk.filter(s=>Number(s.quantity)<=Number(s.min_quantity)).length,
+        low_stock_items:stk.filter(s=>Number(s.quantity)<=Number(s.min_quantity)).slice(0,5),
+      })
+    })
+  }, [storeId])
 
   return (
-    <Grid>
-      <Panel title={editId ? 'Editar producto' : 'Nuevo producto'}>
-        {error && <Notice tone="error">{error}</Notice>}
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Nombre"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del producto" /></Field>
-            <Field label="Precio (€)"><input className={controlDeckStyles.input} type="number" step="0.01" value={form.price}
-              onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="9.99" /></Field>
-            <Field label="Categoría"><input className={controlDeckStyles.input} value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="postres, principales..." /></Field>
-            <Field label="Emoji"><input className={controlDeckStyles.input} value={form.emoji}
-              onChange={e => setForm(f => ({ ...f, emoji: e.target.value }))} /></Field>
-          </FormGrid>
-          <Field label="Descripción"><textarea className={controlDeckStyles.textarea} value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></Field>
-          <Actions>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : editId ? 'Actualizar' : 'Crear producto'}</Button>
-            {editId && <GhostButton type="button" onClick={() => { setEditId(null); setForm({ name: '', price: '', category: 'general', emoji: '🍽️', description: '' }) }}>Cancelar</GhostButton>}
-          </Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Catálogo (${products.length})`} dark>
-        {loading && <Notice>Cargando...</Notice>}
-        {!loading && !products.length && <EmptyState icon="🍽️" message="Sin productos aún" />}
-        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-          {products.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-              <span style={{ fontSize: 20 }}>{p.emoji}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{p.category} · €{Number(p.price).toFixed(2)}</div>
-              </div>
-              <StatusBadge status={p.is_active ? 'active' : 'paused'} />
-              <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                onClick={() => { setEditId(p.id); setForm({ name: p.name, price: p.price, category: p.category, emoji: p.emoji, description: p.description || '' }) }}>Editar</GhostButton>
-              <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                onClick={() => toggleActive(p)}>{p.is_active ? 'Pausar' : 'Activar'}</GhostButton>
-              <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11, color: '#dc2626' }}
-                onClick={() => deleteProduct(p.id)}>✕</GhostButton>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </Grid>
-  )
-}
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <StatGrid items={[
+        { label:'Pedidos hoy',   value:stats?.orders_today??'…',  icon:'📦', color:'#2563eb' },
+        { label:'Ingresos (24h)',value:`€${stats?.revenue_today??'0.00'}`, icon:'💰', color:'#16a34a' },
+        { label:'Pendientes',    value:stats?.pending??'…',       icon:'⏳', color:'#ca8a04' },
+        { label:'Staff online',  value:stats?.staff_online??'…',  icon:'🟢', color:'#16a34a' },
+        { label:'Stock bajo',    value:stats?.low_stock??'…',     icon:'⚠️', color:'#dc2626' },
+      ]} />
 
-function CombosTab({ storeId }) {
-  const [combos, setCombos] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', price: '', emoji: '🎁', description: '' })
-  const [editId, setEditId] = React.useState(null)
-  const [saving, setSaving] = React.useState(false)
-  const [error, setError] = React.useState('')
-
-  const load = () => {
-    setLoading(true)
-    API('GET', '/combos').then(setCombos).catch(e => setError(e.message)).finally(() => setLoading(false))
-  }
-
-  React.useEffect(load, [storeId])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true); setError('')
-    try {
-      if (editId) await API('PATCH', `/combos/${editId}`, { ...form, price: Number(form.price) })
-      else await API('POST', '/combos', { ...form, price: Number(form.price) })
-      setForm({ name: '', price: '', emoji: '🎁', description: '' })
-      setEditId(null)
-      load()
-    } catch (err) { setError(err.message) }
-    setSaving(false)
-  }
-
-  return (
-    <Grid>
-      <Panel title={editId ? 'Editar combo' : 'Nuevo combo'}>
-        {error && <Notice tone="error">{error}</Notice>}
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Nombre del combo"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></Field>
-            <Field label="Precio (€)"><input className={controlDeckStyles.input} type="number" step="0.01" value={form.price}
-              onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></Field>
-            <Field label="Emoji"><input className={controlDeckStyles.input} value={form.emoji}
-              onChange={e => setForm(f => ({ ...f, emoji: e.target.value }))} /></Field>
-          </FormGrid>
-          <Field label="Descripción"><textarea className={controlDeckStyles.textarea} value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} /></Field>
-          <Actions>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : editId ? 'Actualizar' : 'Crear combo'}</Button>
-            {editId && <GhostButton type="button" onClick={() => { setEditId(null); setForm({ name: '', price: '', emoji: '🎁', description: '' }) }}>Cancelar</GhostButton>}
-          </Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Combos (${combos.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : combos.length === 0 ? <EmptyState icon="🎁" message="Sin combos" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {combos.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <span style={{ fontSize: 20 }}>{c.emoji}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>€{Number(c.price).toFixed(2)}</div>
-                </div>
-                <StatusBadge status={c.is_active ? 'active' : 'paused'} />
-                <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                  onClick={() => { setEditId(c.id); setForm({ name: c.name, price: c.price, emoji: c.emoji, description: c.description || '' }) }}>Editar</GhostButton>
-              </div>
+      <Grid2>
+        <Card title="Vistas operativas">
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {[
+              { icon:'🍳', label:'Panel de Cocina',       href:`/branch/kitchen?store_id=${storeId}&branch_id=${branchId}`, color:'#f97316' },
+              { icon:'🛵', label:'Panel de Repartidores', href:`/branch/riders?store_id=${storeId}&branch_id=${branchId}`,  color:'#8b5cf6' },
+            ].map(l => (
+              <a key={l.href} href={l.href} style={{
+                display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
+                borderRadius:10, border:`1px solid ${l.color}30`,
+                background:`${l.color}08`, textDecoration:'none',
+                color:'var(--color-text-primary)', fontWeight:600, fontSize:14,
+              }}>
+                <span style={{fontSize:24}}>{l.icon}</span>
+                <span>{l.label}</span>
+                <span style={{marginLeft:'auto',color:l.color}}>→</span>
+              </a>
             ))}
           </div>
-        }
-      </Panel>
-    </Grid>
+        </Card>
+
+        {stats?.low_stock > 0 && (
+          <Card title="⚠️ Stock bajo" accent="#f97316">
+            {stats.low_stock_items.map(item => (
+              <div key={item.id} style={{
+                display:'flex', justifyContent:'space-between',
+                padding:'8px 0', borderBottom:'1px solid var(--color-border-tertiary)',
+                fontSize:13,
+              }}>
+                <span>{item.name}</span>
+                <span style={{color:'#dc2626',fontWeight:600}}>
+                  {item.quantity} / mín {item.min_quantity}
+                </span>
+              </div>
+            ))}
+          </Card>
+        )}
+      </Grid2>
+    </div>
   )
 }
 
-function StockTab({ storeId }) {
-  const [stock, setStock] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', quantity: '', min_quantity: '5', unit: 'unidades' })
-  const [editId, setEditId] = React.useState(null)
-  const [saving, setSaving] = React.useState(false)
 
-  const load = () => {
+// ─── PRODUCTS TAB ─────────────────────────────────────────────────
+function ProductsTab({ storeId }) {
+  const [products, setProducts] = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
+  const [form,     setForm]     = React.useState({ name:'', price:'', category:'general', emoji:'🍽️', description:'' })
+  const [editId,   setEditId]   = React.useState(null)
+  const [saving,   setSaving]   = React.useState(false)
+  const [error,    setError]    = React.useState('')
+  const [search,   setSearch]   = React.useState('')
+
+  const load = async () => {
     setLoading(true)
-    API('GET', '/stock').then(setStock).catch(console.error).finally(() => setLoading(false))
+    const { data } = await supabaseAuth.from('products').select('*').eq('store_id',storeId).order('sort_order')
+    setProducts(data||[])
+    setLoading(false)
   }
-
-  React.useEffect(load, [storeId])
+  React.useEffect(() => { load() }, [storeId])
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
+    e.preventDefault(); setSaving(true); setError('')
     try {
-      if (editId) await API('PATCH', `/stock/${editId}`, { quantity: Number(form.quantity), min_quantity: Number(form.min_quantity) })
-      else await API('POST', '/stock', { ...form, quantity: Number(form.quantity), min_quantity: Number(form.min_quantity) })
-      setForm({ name: '', quantity: '', min_quantity: '5', unit: 'unidades' })
-      setEditId(null)
-      load()
-    } catch (err) { console.error(err) }
+      const payload = { ...form, price:Number(form.price), store_id:storeId }
+      if (editId) await supabaseAuth.from('products').update(payload).eq('id',editId)
+      else        await supabaseAuth.from('products').insert(payload)
+      setForm({ name:'', price:'', category:'general', emoji:'🍽️', description:'' })
+      setEditId(null); load()
+    } catch(e) { setError(e.message) }
     setSaving(false)
   }
 
+  const filtered = products.filter(p =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase())
+  )
+
   return (
-    <Grid>
-      <Panel title={editId ? 'Editar inventario' : 'Añadir artículo'}>
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Artículo"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} disabled={!!editId} /></Field>
-            <Field label="Unidad"><input className={controlDeckStyles.input} value={form.unit}
-              onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} /></Field>
-            <Field label="Cantidad actual"><input className={controlDeckStyles.input} type="number" step="0.1" value={form.quantity}
-              onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} /></Field>
-            <Field label="Mínimo"><input className={controlDeckStyles.input} type="number" step="0.1" value={form.min_quantity}
-              onChange={e => setForm(f => ({ ...f, min_quantity: e.target.value }))} /></Field>
-          </FormGrid>
-          <Actions>
-            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : editId ? 'Actualizar' : 'Añadir al stock'}</Button>
-            {editId && <GhostButton type="button" onClick={() => setEditId(null)}>Cancelar</GhostButton>}
-          </Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Inventario (${stock.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : stock.length === 0 ? <EmptyState icon="📦" message="Sin artículos de stock" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {stock.map(item => {
-              const low = Number(item.quantity) <= Number(item.min_quantity)
-              return (
-                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13 }}>{item.name}</div>
-                    <div style={{ fontSize: 12, color: low ? '#dc2626' : 'var(--color-text-secondary)' }}>
-                      {item.quantity} / mín {item.min_quantity} {item.unit}
-                    </div>
-                  </div>
-                  {low && <span style={{ fontSize: 11, background: '#fef2f2', color: '#dc2626',
-                    padding: '2px 8px', borderRadius: 20 }}>⚠️ Bajo</span>}
-                  <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                    onClick={() => { setEditId(item.id); setForm({ name: item.name, quantity: String(item.quantity), min_quantity: String(item.min_quantity), unit: item.unit || 'unidades' }) }}>Ajustar</GhostButton>
-                </div>
-              )
-            })}
+    <Grid2>
+      <Card title={editId?'Editar producto':'Nuevo producto'}>
+        {error && <Alert type="error">{error}</Alert>}
+        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <Input label="Nombre *" required value={form.name}
+            onChange={e => setForm(f=>({...f,name:e.target.value}))} placeholder="Margherita" />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <Input label="Precio (€) *" type="number" step="0.01" required value={form.price}
+              onChange={e => setForm(f=>({...f,price:e.target.value}))} placeholder="9.99" />
+            <Input label="Emoji" value={form.emoji}
+              onChange={e => setForm(f=>({...f,emoji:e.target.value}))} />
           </div>
-        }
-      </Panel>
-    </Grid>
+          <Input label="Categoría" value={form.category}
+            onChange={e => setForm(f=>({...f,category:e.target.value}))} placeholder="pizzas, postres…" />
+          <Textarea label="Descripción" value={form.description}
+            onChange={e => setForm(f=>({...f,description:e.target.value}))} rows={2} />
+          <div style={{ display:'flex', gap:8 }}>
+            <Btn type="submit" full disabled={saving}>{saving?'Guardando…':editId?'Actualizar':'Crear producto'}</Btn>
+            {editId && <Btn variant="ghost" onClick={()=>{setEditId(null);setForm({name:'',price:'',category:'general',emoji:'🍽️',description:''})}}>Cancelar</Btn>}
+          </div>
+        </form>
+      </Card>
+
+      <Card title={`Catálogo (${products.length})`}
+        action={<input placeholder="Buscar…" value={search} onChange={e=>setSearch(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--color-border-secondary)',fontSize:12,background:'var(--color-background-secondary)'}} />}>
+        {loading && <Empty icon="⏳" title="Cargando…" />}
+        <div style={{ maxHeight:480, overflowY:'auto' }}>
+          {filtered.map(p => (
+            <div key={p.id} style={{
+              display:'flex', alignItems:'center', gap:10,
+              padding:'10px 0', borderBottom:'1px solid var(--color-border-tertiary)',
+            }}>
+              <span style={{fontSize:24,flexShrink:0}}>{p.emoji||'🍽️'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13}}>{p.name}</div>
+                <div style={{fontSize:12,color:'var(--color-text-secondary)'}}>
+                  {p.category} · €{Number(p.price).toFixed(2)}
+                </div>
+              </div>
+              <StatusBadge status={p.is_active&&!p.out_of_stock?'active':p.out_of_stock?'cancelled':'paused'} size="sm" />
+              <div style={{display:'flex',gap:4}}>
+                <Btn size="sm" variant="ghost"
+                  onClick={()=>{setEditId(p.id);setForm({name:p.name,price:p.price,category:p.category||'general',emoji:p.emoji||'🍽️',description:p.description||''})}}>
+                  ✏️
+                </Btn>
+                <Btn size="sm" variant={p.is_active?'ghost':'success'}
+                  onClick={async()=>{await supabaseAuth.from('products').update({is_active:!p.is_active}).eq('id',p.id);load()}}>
+                  {p.is_active?'Pausar':'Activar'}
+                </Btn>
+              </div>
+            </div>
+          ))}
+          {!filtered.length && !loading && <Empty icon="🍽️" title="Sin productos" />}
+        </div>
+      </Card>
+    </Grid2>
   )
 }
 
-function OrdersTab({ branchId }) {
-  const [orders, setOrders] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [statusFilter, setStatusFilter] = React.useState('')
-  const [updating, setUpdating] = React.useState(null)
 
-  const load = () => {
+// ─── ORDERS TAB ───────────────────────────────────────────────────
+function OrdersTab({ storeId, branchId }) {
+  const [orders,  setOrders]  = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [filter,  setFilter]  = React.useState('active')
+  const [busy,    setBusy]    = React.useState(null)
+
+  const load = async () => {
     setLoading(true)
-    API('GET', `/orders${statusFilter ? `?status=${statusFilter}` : ''}`).then(setOrders).catch(console.error).finally(() => setLoading(false))
+    let q = supabaseAuth.from('orders').select('*').eq('store_id',storeId)
+      .order('created_at',{ascending:false}).limit(50)
+    if (branchId) q = q.eq('branch_id', branchId)
+    const { data } = await q
+    setOrders(data||[])
+    setLoading(false)
+  }
+  React.useEffect(() => { load() }, [storeId, branchId])
+
+  async function changeStatus(order, status) {
+    setBusy(order.id)
+    await supabaseAuth.from('orders').update({ status, updated_at:new Date().toISOString() }).eq('id',order.id)
+    load(); setBusy(null)
   }
 
-  React.useEffect(load, [branchId, statusFilter])
+  const FILTERS = [
+    { id:'active',    label:'Activos', fn: o=>!['delivered','cancelled'].includes(o.status) },
+    { id:'delivered', label:'Entregados', fn: o=>o.status==='delivered' },
+    { id:'cancelled', label:'Cancelados', fn: o=>o.status==='cancelled' },
+    { id:'all',       label:'Todos', fn: ()=>true },
+  ]
+  const visible = orders.filter(FILTERS.find(f=>f.id===filter)?.fn||FILTERS[0].fn)
 
-  const STATUSES = ['pending', 'preparing', 'ready', 'delivering', 'delivered', 'cancelled']
-
-  async function changeStatus(orderId, status) {
-    setUpdating(orderId)
-    await API('PATCH', `/orders/${orderId}/status`, { status })
-    load()
-    setUpdating(null)
+  const NEXT_STATUS = {
+    pending:   [{s:'preparing',l:'▶ Preparar'},{s:'cancelled',l:'✕ Cancelar'}],
+    preparing: [{s:'ready',l:'✓ Listo'},{s:'cancelled',l:'✕ Cancelar'}],
+    ready:     [{s:'delivering',l:'🛵 Despachar'},{s:'delivered',l:'✅ Entregado'}],
+    delivering:[{s:'delivered',l:'✅ Entregado'}],
   }
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-        <GhostButton type="button" onClick={() => setStatusFilter('')}
-          style={{ background: !statusFilter ? 'var(--color-background-secondary)' : undefined }}>Todos</GhostButton>
-        {STATUSES.map(s => (
-          <GhostButton key={s} type="button" onClick={() => setStatusFilter(s)}
-            style={{ background: statusFilter === s ? 'var(--color-background-secondary)' : undefined }}>
-            {s}
-          </GhostButton>
+      {/* Filtros */}
+      <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+        {FILTERS.map(f => (
+          <button key={f.id} onClick={()=>setFilter(f.id)} style={{
+            padding:'6px 14px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',
+            border:`1px solid var(--color-border-secondary)`,
+            background:filter===f.id?'var(--color-text-primary)':'transparent',
+            color:filter===f.id?'var(--color-background-primary)':'var(--color-text-secondary)',
+            fontWeight:filter===f.id?600:400,
+          }}>{f.label} ({orders.filter(FILTERS.find(x=>x.id===f.id)?.fn||FILTERS[0].fn).length})</button>
         ))}
+        <button onClick={load} style={{marginLeft:'auto',padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--color-border-secondary)',background:'transparent',cursor:'pointer'}}>↻ Actualizar</button>
       </div>
-      {loading ? <Notice>Cargando pedidos...</Notice> : orders.length === 0 ? <EmptyState icon="🧾" message="Sin pedidos" /> :
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {orders.map(order => (
-            <div key={order.id} style={{ background: 'var(--color-background-primary)',
-              border: '1px solid var(--color-border-tertiary)', borderRadius: 10, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 500, fontSize: 13 }}>#{order.id.slice(-6).toUpperCase()}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StatusBadge status={order.status} />
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>€{Number(order.total || 0).toFixed(2)}</span>
+
+      {loading && <Empty icon="⏳" title="Cargando pedidos…" />}
+      {!loading && !visible.length && <Empty icon="🎉" title="Sin pedidos en este estado" />}
+
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {visible.map(o => {
+          const c = STATUS_COLORS[o.status]||'#64748b'
+          let items = []; try { items = typeof o.items==='string'?JSON.parse(o.items):(o.items||[]) } catch {}
+          return (
+            <div key={o.id} style={{
+              background:'var(--color-background-primary)',
+              border:`1px solid var(--color-border-tertiary)`,
+              borderLeft:`4px solid ${c}`,
+              borderRadius:10, padding:'12px 14px',
+            }}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+                <div>
+                  <span style={{fontWeight:700,fontSize:15}}>#{o.order_number||o.id.slice(-6).toUpperCase()}</span>
+                  <span style={{marginLeft:10,fontSize:13,color:'var(--color-text-secondary)'}}>{o.customer_name}</span>
+                </div>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{fontWeight:700,fontSize:14}}>€{Number(o.total||0).toFixed(2)}</span>
+                  <StatusBadge status={o.status} size="sm" />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {STATUSES.filter(s => s !== order.status).map(s => (
-                  <GhostButton key={s} type="button" disabled={updating === order.id}
-                    style={{ padding: '3px 10px', fontSize: 11 }}
-                    onClick={() => changeStatus(order.id, s)}>→ {s}</GhostButton>
-                ))}
+
+              {/* Items */}
+              {items.length>0 && (
+                <div style={{fontSize:12,color:'var(--color-text-secondary)',marginBottom:8}}>
+                  {items.slice(0,3).map((it,i)=>(
+                    <span key={i}>{it.qty||1}× {it.product_name||it.name||'ítem'}{i<Math.min(items.length,3)-1?', ':''}</span>
+                  ))}
+                  {items.length>3&&` +${items.length-3} más`}
+                </div>
+              )}
+
+              {/* Dirección + teléfono */}
+              <div style={{display:'flex',gap:16,fontSize:12,color:'var(--color-text-secondary)',marginBottom:8}}>
+                {(o.delivery_address||o.address)&&<span>📍 {o.delivery_address||o.address}</span>}
+                {o.customer_phone&&<a href={`tel:${o.customer_phone}`} style={{color:'#2563eb',textDecoration:'none'}}>📞 {o.customer_phone}</a>}
               </div>
+
+              {/* Acciones */}
+              {NEXT_STATUS[o.status] && (
+                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                  {NEXT_STATUS[o.status].map(ns=>(
+                    <Btn key={ns.s} size="sm"
+                      variant={ns.s==='cancelled'?'danger':ns.s==='delivered'?'success':'blue'}
+                      disabled={busy===o.id}
+                      onClick={()=>changeStatus(o,ns.s)}>
+                      {busy===o.id?'…':ns.l}
+                    </Btn>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      }
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function StaffTab({ storeId, storeSlug, branchSlug }) {
-  const [staff, setStaff] = React.useState([])
+
+// ─── STAFF TAB ────────────────────────────────────────────────────
+function StaffTab({ storeId, branchId, store, branch }) {
+  const [staff,   setStaff]   = React.useState([])
   const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', role: 'cashier', phone: '', pin: '' })
-  const [saving, setSaving] = React.useState(false)
-  const [copiedId, setCopiedId] = React.useState(null)
+  const [showForm,setShowForm]= React.useState(false)
+  const [form,    setForm]    = React.useState({ name:'', role:'cashier', phone:'', email:'', pin:'', notes:'' })
+  const [saving,  setSaving]  = React.useState(false)
+  const [error,   setError]   = React.useState('')
+  const [copied,  setCopied]  = React.useState(null)
 
-  const load = () => {
+  const load = async () => {
     setLoading(true)
-    supabase.from('staff_users').select('*').eq('store_id', storeId).order('name')
-      .then(({ data }) => setStaff(data ?? []))
-      .catch(console.error).finally(() => setLoading(false))
+    const { data } = await supabaseAuth.from('staff_users').select('*')
+      .eq('store_id',storeId).order('name')
+    setStaff(data||[])
+    setLoading(false)
   }
+  React.useEffect(() => { load() }, [storeId])
 
-  React.useEffect(load, [storeId])
-
-  const loginBase = `${window.location.origin}/s/${storeSlug}/${branchSlug}/login`
-
-  async function handleSubmit(e) {
-    e.preventDefault(); setSaving(true)
+  async function handleCreate(e) {
+    e.preventDefault(); setSaving(true); setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: branch } = await supabase.from('branches').select('id, tenant_id')
-        .eq('slug', branchSlug).maybeSingle()
-      await supabase.from('staff_users').insert({
-        store_id: storeId, tenant_id: branch?.tenant_id,
-        branch_id: branch?.id, name: form.name,
-        role: form.role, phone: form.phone, pin: form.pin,
-        is_active: true,
+      const { error:er } = await supabaseAuth.from('staff_users').insert({
+        store_id:storeId, branch_id:branchId||null, name:form.name,
+        role:form.role, phone:form.phone, email:form.email||null,
+        pin:form.pin, notes:form.notes, is_active:true,
       })
-      setForm({ name: '', role: 'cashier', phone: '', pin: '' })
-      load()
-    } catch (err) { console.error(err) }
+      if (er) throw er
+      setForm({ name:'', role:'cashier', phone:'', email:'', pin:'', notes:'' })
+      setShowForm(false); load()
+    } catch(e) { setError(e.message) }
     setSaving(false)
   }
 
-  async function toggleActive(s) {
-    await supabase.from('staff_users').update({ is_active: !s.is_active }).eq('id', s.id)
+  async function toggle(s) {
+    await supabaseAuth.from('staff_users').update({ is_active:!s.is_active }).eq('id',s.id)
     load()
   }
 
-  function copyLink(id, link) {
-    navigator.clipboard.writeText(link)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
-  }
+  const storeSlug  = store?.slug  || storeId
+  const branchSlug = branch?.slug || 'principal'
+  const loginUrl   = `${window.location.origin}/s/${storeSlug}/${branchSlug}/login`
 
-  const ROLES = ['branch_manager', 'kitchen', 'rider', 'cashier']
-  const ROLE_DEST = { kitchen:'kitchen', rider:'riders', cashier:'admin', branch_manager:'admin' }
+  const ROLES = [
+    ['branch_manager','Manager de sede'],['cashier','Caja'],
+    ['kitchen','Cocina'],['rider','Repartidor'],['store_operator','Operador'],
+  ]
+
+  const ROLE_COLORS = { branch_manager:'#6366f1', cashier:'#2563eb', kitchen:'#f97316', rider:'#8b5cf6', store_operator:'#0891b2' }
 
   return (
-    <Grid>
-      <Panel title="Añadir personal">
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Nombre *"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Camila Ruiz" /></Field>
-            <Field label="Rol"><select className={controlDeckStyles.select} value={form.role}
-              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select></Field>
-            <Field label="Teléfono"><input className={controlDeckStyles.input} value={form.phone}
-              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+34 600 000 000" /></Field>
-            <Field label="PIN (4-8 dígitos) *"><input className={controlDeckStyles.input} type="password"
-              inputMode="numeric" maxLength={8} value={form.pin} required
-              onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} placeholder="1234" /></Field>
-          </FormGrid>
-          <Actions><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Añadir empleado'}</Button></Actions>
-        </Form>
-        {storeSlug && branchSlug && (
-          <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--color-background-secondary)',
-            borderRadius: 8, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-            <div style={{ marginBottom: 4, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-              Link de acceso de esta sede:
-            </div>
-            <code style={{ wordBreak: 'break-all', fontSize: 11 }}>{loginBase}</code>
+    <Grid2>
+      <Card title="Personal de la sede"
+        action={<Btn size="sm" onClick={()=>setShowForm(s=>!s)}>{showForm?'✕ Cancelar':'+ Añadir'}</Btn>}>
+
+        {showForm && (
+          <div style={{marginBottom:16,padding:16,background:'var(--color-background-secondary)',borderRadius:10}}>
+            {error && <Alert type="error">{error}</Alert>}
+            <form onSubmit={handleCreate} style={{display:'flex',flexDirection:'column',gap:10}}>
+              <Input label="Nombre completo *" required value={form.name}
+                onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Camila Ruiz" />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Select label="Rol *" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
+                  {ROLES.map(([id,l])=><option key={id} value={id}>{l}</option>)}
+                </Select>
+                <Input label="PIN (4-8 dígitos) *" required type="password" inputMode="numeric"
+                  maxLength={8} value={form.pin}
+                  onChange={e=>setForm(f=>({...f,pin:e.target.value}))} placeholder="1234" />
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Input label="Teléfono" value={form.phone}
+                  onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="+34 600 000 000" />
+                <Input label="Email" type="email" value={form.email}
+                  onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="opconal@mail.com" />
+              </div>
+              <Textarea label="Notas" value={form.notes}
+                onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={2} placeholder="Turno, especialidad…" />
+              <Btn type="submit" full disabled={saving}>{saving?'Creando…':'Crear perfil de staff'}</Btn>
+            </form>
           </div>
         )}
-      </Panel>
-      <Panel title={`Personal (${staff.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : staff.length === 0 ? <EmptyState icon="👥" message="Sin personal registrado" /> :
-          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
-            {staff.map(s => {
-              const dest = ROLE_DEST[s.role] || 'admin'
-              const link = loginBase
-              return (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--color-background-info)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 500,
-                  color: 'var(--color-text-info)', flexShrink: 0 }}>
-                  {s.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                    {s.role} · PIN: {s.pin ? '••••' : 'sin PIN'} {s.is_online ? '🟢' : '⚫'}
+
+        {/* Link de acceso */}
+        <div style={{
+          padding:'10px 12px', borderRadius:8, marginBottom:12,
+          background:'var(--color-background-secondary)',
+          border:'1px solid var(--color-border-tertiary)', fontSize:12,
+        }}>
+          <div style={{fontWeight:500,marginBottom:4}}>🔗 Link de acceso para esta sede:</div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <code style={{fontSize:11,color:'var(--color-text-secondary)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{loginUrl}</code>
+            <Btn size="sm" variant="ghost" onClick={()=>{navigator.clipboard.writeText(loginUrl);setCopied('url');setTimeout(()=>setCopied(null),2000)}}>
+              {copied==='url'?'✓ Copiado':'Copiar'}
+            </Btn>
+          </div>
+        </div>
+
+        {loading && <Empty icon="⏳" title="Cargando…" />}
+        {!loading && !staff.length && <Empty icon="👥" title="Sin personal registrado" sub="Crea el primer perfil de staff" />}
+
+        <div style={{maxHeight:420,overflowY:'auto'}}>
+          {staff.map(s => {
+            const color = ROLE_COLORS[s.role]||'#64748b'
+            return (
+              <div key={s.id} style={{
+                display:'flex',alignItems:'center',gap:12,
+                padding:'10px 0',borderBottom:'1px solid var(--color-border-tertiary)',
+              }}>
+                <div style={{
+                  width:38,height:38,borderRadius:9,flexShrink:0,
+                  background:`${color}20`,color,
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  fontWeight:700,fontSize:14,
+                }}>{s.name.slice(0,2).toUpperCase()}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:13,display:'flex',alignItems:'center',gap:6}}>
+                    {s.name}
+                    <span style={{fontSize:10,background:`${color}15`,color,padding:'1px 6px',borderRadius:20,fontWeight:600}}>
+                      {s.role}
+                    </span>
+                    {s.is_online && <span style={{fontSize:10,color:'#16a34a'}}>🟢</span>}
                   </div>
-                  {storeSlug && branchSlug && (
-                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      /s/{storeSlug}/{branchSlug}/login → {dest}
-                    </div>
-                  )}
+                  <div style={{fontSize:11,color:'var(--color-text-secondary)',marginTop:2}}>
+                    {s.phone||'Sin tel.'} · PIN: {s.pin?'••••':'sin PIN'}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  {storeSlug && branchSlug && (
-                    <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 10 }}
-                      onClick={() => copyLink(s.id, link)}>
-                      {copiedId === s.id ? '✓ Copiado' : 'Copiar link'}
-                    </GhostButton>
-                  )}
-                  <StatusBadge status={s.is_active ? 'active' : 'paused'} />
-                  <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                    onClick={() => toggleActive(s)}>{s.is_active ? 'Pausar' : 'Activar'}</GhostButton>
+                <div style={{display:'flex',gap:4}}>
+                  <StatusBadge status={s.is_active?'active':'paused'} size="sm" />
+                  <Btn size="sm" variant="ghost" onClick={()=>toggle(s)}>
+                    {s.is_active?'Pausar':'Activar'}
+                  </Btn>
                 </div>
               </div>
-            )})}
-          </div>
-        }
-      </Panel>
-    </Grid>
+            )
+          })}
+        </div>
+      </Card>
+
+      <Card title="Roles y permisos" sub="Qué puede hacer cada rol">
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {[
+            { role:'branch_manager', icon:'🏢', desc:'Acceso completo al panel de sede. Gestiona todo el equipo.' },
+            { role:'cashier',        icon:'🧾', desc:'Gestión de pedidos y caja. No ve finanzas ni staff.' },
+            { role:'kitchen',        icon:'🍳', desc:'Solo ve la vista de cocina con los tickets activos.' },
+            { role:'rider',          icon:'🛵', desc:'Solo ve los pedidos listos para despacho y entrega.' },
+            { role:'store_operator', icon:'📊', desc:'Acceso amplio a productos y pedidos. Sin finanzas.' },
+          ].map(r => {
+            const c = ROLE_COLORS[r.role]||'#64748b'
+            return (
+              <div key={r.role} style={{
+                padding:'12px 14px',borderRadius:10,
+                border:`1px solid ${c}30`,background:`${c}06`,
+              }}>
+                <div style={{fontWeight:600,fontSize:13,color:c,marginBottom:4}}>
+                  {r.icon} {r.role}
+                </div>
+                <div style={{fontSize:12,color:'var(--color-text-secondary)'}}>{r.desc}</div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+    </Grid2>
   )
 }
 
+
+// ─── MARKETING TAB ────────────────────────────────────────────────
 function MarketingTab({ storeId }) {
-  const [coupons, setCoupons] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ code: '', type: 'percentage', value: '', min_order: '0', description: '' })
-  const [saving, setSaving] = React.useState(false)
+  const [tab, setTab] = React.useState('coupons')
+  const [coupons,  setCoupons]  = React.useState([])
+  const [reviews,  setReviews]  = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
+  const [form,     setForm]     = React.useState({ code:'', type:'percentage', value:'', min_order:'0', description:'' })
+  const [saving,   setSaving]   = React.useState(false)
 
-  const load = () => {
+  React.useEffect(() => {
     setLoading(true)
-    API('GET', '/coupons').then(setCoupons).catch(console.error).finally(() => setLoading(false))
-  }
+    Promise.all([
+      supabaseAuth.from('coupons').select('*').eq('store_id',storeId).order('created_at',{ascending:false}),
+      supabaseAuth.from('reviews').select('*').eq('store_id',storeId).order('created_at',{ascending:false}).limit(20),
+    ]).then(([c,r]) => { setCoupons(c.data||[]); setReviews(r.data||[]); setLoading(false) })
+  }, [storeId])
 
-  React.useEffect(load, [storeId])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await API('POST', '/coupons', { ...form, value: Number(form.value), min_order: Number(form.min_order) })
-      setForm({ code: '', type: 'percentage', value: '', min_order: '0', description: '' })
-      load()
-    } catch (err) { console.error(err) }
+  async function createCoupon(e) {
+    e.preventDefault(); setSaving(true)
+    await supabaseAuth.from('coupons').insert({ ...form, value:Number(form.value), min_order:Number(form.min_order), store_id:storeId, is_active:true })
+    setForm({ code:'', type:'percentage', value:'', min_order:'0', description:'' })
+    const { data } = await supabaseAuth.from('coupons').select('*').eq('store_id',storeId).order('created_at',{ascending:false})
+    setCoupons(data||[])
     setSaving(false)
   }
 
   async function toggleCoupon(c) {
-    await API('PATCH', `/coupons/${c.id}`, { is_active: !c.is_active })
-    load()
-  }
-
-  async function deleteCoupon(id) {
-    if (!confirm('¿Eliminar cupón?')) return
-    await API('DELETE', `/coupons/${id}`)
-    load()
-  }
-
-  return (
-    <Grid>
-      <Panel title="Crear cupón de descuento">
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Código"><input className={controlDeckStyles.input} value={form.code} required
-              onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="DESCUENTO10" /></Field>
-            <Field label="Tipo"><select className={controlDeckStyles.select} value={form.type}
-              onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              <option value="percentage">Porcentaje (%)</option>
-              <option value="fixed">Fijo (€)</option>
-              <option value="free_delivery">Envío gratis</option>
-            </select></Field>
-            <Field label={form.type === 'percentage' ? 'Descuento (%)' : 'Descuento (€)'}>
-              <input className={controlDeckStyles.input} type="number" step="0.01" value={form.value}
-                onChange={e => setForm(f => ({ ...f, value: e.target.value }))} placeholder="10" />
-            </Field>
-            <Field label="Pedido mínimo (€)"><input className={controlDeckStyles.input} type="number" step="0.01" value={form.min_order}
-              onChange={e => setForm(f => ({ ...f, min_order: e.target.value }))} /></Field>
-          </FormGrid>
-          <Field label="Descripción (interna)"><input className={controlDeckStyles.input} value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
-          <Actions><Button type="submit" disabled={saving}>{saving ? 'Creando...' : 'Crear cupón'}</Button></Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Cupones (${coupons.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : coupons.length === 0 ? <EmptyState icon="🏷️" message="Sin cupones" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {coupons.map(c => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, fontFamily: 'monospace' }}>{c.code}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    {c.type === 'percentage' ? `${c.value}%` : `€${c.value}`} · min €{c.min_order} · {c.uses_count || 0} usos
-                  </div>
-                </div>
-                <StatusBadge status={c.is_active ? 'active' : 'paused'} />
-                <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11 }}
-                  onClick={() => toggleCoupon(c)}>{c.is_active ? 'Pausar' : 'Activar'}</GhostButton>
-                <GhostButton type="button" style={{ padding: '3px 8px', fontSize: 11, color: '#dc2626' }}
-                  onClick={() => deleteCoupon(c.id)}>✕</GhostButton>
-              </div>
-            ))}
-          </div>
-        }
-      </Panel>
-    </Grid>
-  )
-}
-
-function AffiliatesTab({ storeId }) {
-  const [affiliates, setAffiliates] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', email: '', phone: '', code: '', commission_pct: '10' })
-  const [saving, setSaving] = React.useState(false)
-
-  const load = () => {
-    setLoading(true)
-    API('GET', '/affiliates').then(setAffiliates).catch(console.error).finally(() => setLoading(false))
-  }
-
-  React.useEffect(load, [storeId])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await API('POST', '/affiliates', { ...form, commission_pct: Number(form.commission_pct) })
-      setForm({ name: '', email: '', phone: '', code: '', commission_pct: '10' })
-      load()
-    } catch (err) { console.error(err) }
-    setSaving(false)
-  }
-
-  return (
-    <Grid>
-      <Panel title="Nuevo afiliado / referidor">
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Nombre"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></Field>
-            <Field label="Código único"><input className={controlDeckStyles.input} value={form.code}
-              onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="REF-JUAN" /></Field>
-            <Field label="Email"><input className={controlDeckStyles.input} type="email" value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></Field>
-            <Field label="Comisión (%)"><input className={controlDeckStyles.input} type="number" value={form.commission_pct}
-              onChange={e => setForm(f => ({ ...f, commission_pct: e.target.value }))} /></Field>
-          </FormGrid>
-          <Actions><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Añadir afiliado'}</Button></Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Red de afiliados (${affiliates.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : affiliates.length === 0 ? <EmptyState icon="🔗" message="Sin afiliados aún" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {affiliates.map(a => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{a.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    {a.code} · {a.commission_pct}% comisión
-                  </div>
-                </div>
-                <StatusBadge status={a.is_active ? 'active' : 'paused'} />
-              </div>
-            ))}
-          </div>
-        }
-      </Panel>
-    </Grid>
-  )
-}
-
-function LoyaltyTab({ storeId }) {
-  const [rewards, setRewards] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name: '', points_required: '100', reward_type: 'discount', reward_value: '10', description: '' })
-  const [saving, setSaving] = React.useState(false)
-
-  const load = () => {
-    setLoading(true)
-    API('GET', '/loyalty').then(setRewards).catch(console.error).finally(() => setLoading(false))
-  }
-
-  React.useEffect(load, [storeId])
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await API('POST', '/loyalty', { ...form, points_required: Number(form.points_required), reward_value: Number(form.reward_value) })
-      setForm({ name: '', points_required: '100', reward_type: 'discount', reward_value: '10', description: '' })
-      load()
-    } catch (err) { console.error(err) }
-    setSaving(false)
-  }
-
-  return (
-    <Grid>
-      <Panel title="Crear recompensa de fidelidad">
-        <Form onSubmit={handleSubmit}>
-          <FormGrid>
-            <Field label="Nombre del premio"><input className={controlDeckStyles.input} value={form.name} required
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Café gratis" /></Field>
-            <Field label="Puntos necesarios"><input className={controlDeckStyles.input} type="number" value={form.points_required}
-              onChange={e => setForm(f => ({ ...f, points_required: e.target.value }))} /></Field>
-            <Field label="Tipo de premio"><select className={controlDeckStyles.select} value={form.reward_type}
-              onChange={e => setForm(f => ({ ...f, reward_type: e.target.value }))}>
-              <option value="discount">Descuento</option>
-              <option value="free_product">Producto gratis</option>
-              <option value="free_delivery">Envío gratis</option>
-            </select></Field>
-            <Field label="Valor del premio (€ o %)"><input className={controlDeckStyles.input} type="number" step="0.01" value={form.reward_value}
-              onChange={e => setForm(f => ({ ...f, reward_value: e.target.value }))} /></Field>
-          </FormGrid>
-          <Actions><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Crear recompensa'}</Button></Actions>
-        </Form>
-      </Panel>
-      <Panel title={`Recompensas (${rewards.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : rewards.length === 0 ? <EmptyState icon="⭐" message="Sin recompensas" /> :
-          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-            {rewards.map(r => (
-              <div key={r.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 500, fontSize: 13 }}>⭐ {r.name}</span>
-                  <StatusBadge status={r.is_active ? 'active' : 'paused'} />
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                  {r.points_required} puntos → {r.reward_type} de €{r.reward_value}
-                </div>
-              </div>
-            ))}
-          </div>
-        }
-      </Panel>
-    </Grid>
-  )
-}
-
-function ReviewsTab({ storeId }) {
-  const [reviews, setReviews] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-
-  const load = () => {
-    setLoading(true)
-    API('GET', '/reviews').then(setReviews).catch(console.error).finally(() => setLoading(false))
-  }
-
-  React.useEffect(load, [storeId])
-
-  async function approve(id) {
-    await API('PATCH', `/reviews/${id}/approve`)
-    load()
+    await supabaseAuth.from('coupons').update({ is_active:!c.is_active }).eq('id',c.id)
+    setCoupons(prev=>prev.map(x=>x.id===c.id?{...x,is_active:!x.is_active}:x))
   }
 
   return (
     <div>
-      <Stats items={[
-        { label: 'Total reseñas', value: String(reviews.length) },
-        { label: 'Aprobadas', value: String(reviews.filter(r => r.approved).length) },
-        { label: 'Pendientes', value: String(reviews.filter(r => !r.approved).length) },
-      ]} />
-      <div style={{ marginTop: 16 }}>
-        {loading ? <Notice>Cargando...</Notice> : reviews.length === 0 ? <EmptyState icon="💬" message="Sin reseñas" /> :
-          reviews.map(r => (
-            <div key={r.id} style={{ background: 'var(--color-background-primary)',
-              border: '1px solid var(--color-border-tertiary)', borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <div style={{ fontWeight: 500, fontSize: 13 }}>{'⭐'.repeat(r.rating || 5)} {r.customer_name || 'Cliente'}</div>
-                <StatusBadge status={r.approved ? 'active' : 'pending'} />
+      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+        {[['coupons','🏷️ Cupones'],['reviews','💬 Reseñas']].map(([id,l])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{
+            padding:'7px 16px',borderRadius:20,fontSize:13,cursor:'pointer',fontFamily:'inherit',
+            border:'1px solid var(--color-border-secondary)',
+            background:tab===id?'var(--color-text-primary)':'transparent',
+            color:tab===id?'var(--color-background-primary)':'var(--color-text-secondary)',
+            fontWeight:tab===id?600:400,
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {tab==='coupons' && (
+        <Grid2>
+          <Card title="Crear cupón de descuento">
+            <form onSubmit={createCoupon} style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Input label="Código *" required value={form.code}
+                  onChange={e=>setForm(f=>({...f,code:e.target.value.toUpperCase()}))} placeholder="BIENVENIDA10" />
+                <Select label="Tipo" value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
+                  <option value="percentage">Porcentaje (%)</option>
+                  <option value="fixed">Fijo (€)</option>
+                  <option value="free_delivery">Envío gratis</option>
+                </Select>
               </div>
-              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>{r.comment || r.text || '(sin comentario)'}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <Input label={form.type==='percentage'?'Descuento (%)':'Descuento (€)'} type="number" step="0.01"
+                  value={form.value} onChange={e=>setForm(f=>({...f,value:e.target.value}))} placeholder="10" />
+                <Input label="Pedido mínimo (€)" type="number" step="0.01"
+                  value={form.min_order} onChange={e=>setForm(f=>({...f,min_order:e.target.value}))} />
+              </div>
+              <Input label="Descripción interna" value={form.description}
+                onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Campaña de captación" />
+              <Btn type="submit" full disabled={saving}>{saving?'Creando…':'Crear cupón'}</Btn>
+            </form>
+          </Card>
+          <Card title={`Cupones activos (${coupons.length})`}>
+            {!coupons.length && <Empty icon="🏷️" title="Sin cupones todavía" />}
+            {coupons.map(c=>(
+              <div key={c.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderBottom:'1px solid var(--color-border-tertiary)'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,fontFamily:'monospace'}}>{c.code}</div>
+                  <div style={{fontSize:12,color:'var(--color-text-secondary)'}}>
+                    {c.type==='percentage'?`${c.value}%`:`€${c.value}`} · mín €{c.min_order} · {c.uses_count||0} usos
+                  </div>
+                </div>
+                <StatusBadge status={c.is_active?'active':'paused'} size="sm" />
+                <Btn size="sm" variant="ghost" onClick={()=>toggleCoupon(c)}>{c.is_active?'Pausar':'Activar'}</Btn>
+              </div>
+            ))}
+          </Card>
+        </Grid2>
+      )}
+
+      {tab==='reviews' && (
+        <div>
+          <div style={{display:'flex',gap:16,marginBottom:16}}>
+            {[
+              {l:'Total', v:reviews.length},
+              {l:'Aprobadas', v:reviews.filter(r=>r.approved).length},
+              {l:'Pendientes',v:reviews.filter(r=>!r.approved).length},
+              {l:'Promedio', v:reviews.length?(reviews.reduce((s,r)=>s+(r.rating||5),0)/reviews.length).toFixed(1):'—'},
+            ].map(s=>(
+              <div key={s.l} style={{padding:'12px 16px',background:'var(--color-background-primary)',border:'1px solid var(--color-border-tertiary)',borderRadius:10,textAlign:'center'}}>
+                <div style={{fontSize:22,fontWeight:800}}>{s.v}</div>
+                <div style={{fontSize:11,color:'var(--color-text-secondary)'}}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+          {!reviews.length && <Empty icon="💬" title="Sin reseñas todavía" />}
+          {reviews.map(r=>(
+            <div key={r.id} style={{background:'var(--color-background-primary)',border:'1px solid var(--color-border-tertiary)',borderRadius:10,padding:'12px 14px',marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <div style={{fontWeight:500,fontSize:13}}>
+                  {'⭐'.repeat(Math.min(r.rating||5,5))} {r.customer_name||'Cliente'}
+                </div>
+                <StatusBadge status={r.approved?'active':'pending'} size="sm" />
+              </div>
+              <div style={{fontSize:13,color:'var(--color-text-secondary)',marginBottom:8}}>{r.comment||'(sin comentario)'}</div>
               {!r.approved && (
-                <GhostButton type="button" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() => approve(r.id)}>
-                  Aprobar
-                </GhostButton>
+                <Btn size="sm" variant="success"
+                  onClick={async()=>{await supabaseAuth.from('reviews').update({approved:true}).eq('id',r.id);setReviews(prev=>prev.map(x=>x.id===r.id?{...x,approved:true}:x))}}>
+                  ✓ Aprobar
+                </Btn>
               )}
             </div>
-          ))
-        }
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-function ConfigTab({ branchId }) {
-  const [config, setConfig] = React.useState(null)
-  const [saving, setSaving] = React.useState(false)
-  const [saved, setSaved] = React.useState(false)
+// ─── CHATBOT TAB ──────────────────────────────────────────────────
+function ChatbotTab({ branchId, storeId }) {
+  const [data,    setData]    = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    if (!branchId) return
-    API('GET', '/config').then(setConfig).catch(console.error)
+    if (!branchId) return setLoading(false)
+    supabaseAuth.from('branches').select('chatbot_authorized,chatbot_authorized_at,chatbot_last_seen,chatbot_version,chatbot_wa_secret')
+      .eq('id',branchId).maybeSingle().then(({data}) => { setData(data); setLoading(false) })
   }, [branchId])
 
+  if (loading) return <Empty icon="⏳" title="Cargando…" />
+  if (!data?.chatbot_authorized) return (
+    <Card title="Chatbot WhatsApp portable">
+      <Empty icon="🔒" title="No autorizado"
+        sub="El Super Admin debe autorizar esta sede desde el panel de administración para habilitar el chatbot." />
+    </Card>
+  )
+
+  const downloadUrl = `/api/backend/admin/chatbot/download/${branchId}`
+
+  return (
+    <Grid2>
+      <Card title="✅ Chatbot autorizado" accent="#22c55e">
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {[
+            {l:'Estado', v:data.chatbot_last_seen?`🟢 Activo · ${new Date(data.chatbot_last_seen).toLocaleDateString('es-ES')}`:'⚫ No conectado'},
+            {l:'Versión', v:data.chatbot_version||'Pendiente de primera conexión'},
+          ].map(s=>(
+            <div key={s.l} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+              <span style={{color:'var(--color-text-secondary)'}}>{s.l}</span>
+              <span style={{fontWeight:500}}>{s.v}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:16,display:'flex',gap:8}}>
+          <a href={downloadUrl} download style={{textDecoration:'none',flex:1}}>
+            <Btn full variant="success">📦 Descargar ZIP portable</Btn>
+          </a>
+        </div>
+      </Card>
+      <Card title="Instrucciones de instalación">
+        <ol style={{margin:0,padding:'0 0 0 18px',fontSize:13,lineHeight:2.2,color:'var(--color-text-secondary)'}}>
+          <li>Descarga y extrae el ZIP en tu PC</li>
+          <li>Abre el archivo <code style={{background:'var(--color-background-secondary)',padding:'1px 6px',borderRadius:4}}>.env</code> y verifica tus datos</li>
+          <li>Windows: doble clic en <code style={{background:'var(--color-background-secondary)',padding:'1px 6px',borderRadius:4}}>iniciar.bat</code></li>
+          <li>Mac/Linux: ejecuta <code style={{background:'var(--color-background-secondary)',padding:'1px 6px',borderRadius:4}}>./iniciar.sh</code></li>
+          <li>Abre <a href="http://localhost:3001/qr-page" target="_blank" rel="noreferrer" style={{color:'#2563eb'}}>http://localhost:3001/qr-page</a></li>
+          <li>Escanea el QR con WhatsApp en tu móvil</li>
+          <li>¡El bot queda activo!</li>
+        </ol>
+      </Card>
+    </Grid2>
+  )
+}
+
+// ─── CONFIG TAB ───────────────────────────────────────────────────
+function ConfigTab({ branch, setBranch, branchId }) {
+  const [form,   setForm]   = React.useState(null)
+  const [saving, setSaving] = React.useState(false)
+  const [saved,  setSaved]  = React.useState(false)
+  const [error,  setError]  = React.useState('')
+
+  React.useEffect(() => {
+    if (branch) setForm({ ...branch })
+  }, [branch])
+
   async function handleSubmit(e) {
-    e.preventDefault()
-    if (!config) return
-    setSaving(true)
+    e.preventDefault(); setSaving(true); setError('')
     try {
-      await API('PATCH', '/config', {
-        name: config.name,
-        address: config.address,
-        city: config.city,
-        phone: config.phone,
-        open_hour: Number(config.open_hour),
-        close_hour: Number(config.close_hour),
-        open_days: config.open_days,
-        public_visible: config.public_visible,
-      })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
-    } catch (err) { console.error(err) }
+      const { error:er } = await supabaseAuth.from('branches').update({
+        name:form.name, address:form.address, city:form.city, phone:form.phone,
+        open_hour:Number(form.open_hour)||10, close_hour:Number(form.close_hour)||22,
+        open_days:form.open_days, public_visible:form.public_visible,
+      }).eq('id', branchId)
+      if (er) throw er
+      setBranch(form); setSaved(true); setTimeout(()=>setSaved(false),3000)
+    } catch(e) { setError(e.message) }
     setSaving(false)
   }
 
-  if (!config) return <Notice>Cargando configuración...</Notice>
+  if (!form) return <Empty icon="⏳" title="Cargando configuración…" />
 
   return (
-    <Form onSubmit={handleSubmit}>
-      {saved && <Notice tone="success">Configuración guardada correctamente</Notice>}
-      <FormGrid>
-        <Field label="Nombre de la sede"><input className={controlDeckStyles.input} value={config.name || ''}
-          onChange={e => setConfig(c => ({ ...c, name: e.target.value }))} /></Field>
-        <Field label="Teléfono"><input className={controlDeckStyles.input} value={config.phone || ''}
-          onChange={e => setConfig(c => ({ ...c, phone: e.target.value }))} /></Field>
-        <Field label="Ciudad"><input className={controlDeckStyles.input} value={config.city || ''}
-          onChange={e => setConfig(c => ({ ...c, city: e.target.value }))} /></Field>
-        <Field label="Dirección"><input className={controlDeckStyles.input} value={config.address || ''}
-          onChange={e => setConfig(c => ({ ...c, address: e.target.value }))} /></Field>
-        <Field label="Hora apertura"><input className={controlDeckStyles.input} type="number" min="0" max="23" value={config.open_hour || 10}
-          onChange={e => setConfig(c => ({ ...c, open_hour: e.target.value }))} /></Field>
-        <Field label="Hora cierre"><input className={controlDeckStyles.input} type="number" min="0" max="23" value={config.close_hour || 22}
-          onChange={e => setConfig(c => ({ ...c, close_hour: e.target.value }))} /></Field>
-        <Field label="Días activos"><input className={controlDeckStyles.input} value={config.open_days || 'L-D'}
-          onChange={e => setConfig(c => ({ ...c, open_days: e.target.value }))} /></Field>
-      </FormGrid>
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input type="checkbox" id="visible" checked={!!config.public_visible}
-          onChange={e => setConfig(c => ({ ...c, public_visible: e.target.checked }))} />
-        <label htmlFor="visible" style={{ fontSize: 13 }}>Visible públicamente</label>
-      </div>
-      <Actions>
-        <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar configuración'}</Button>
-      </Actions>
-    </Form>
-  )
-}
-
-function ChatbotTab({ branchId, storeId }) {
-  const [status, setStatus] = React.useState(null)
-  const [secret, setSecret] = React.useState(null)
-  const [loading, setLoading] = React.useState(true)
-  const [showSecret, setShowSecret] = React.useState(false)
-
-  React.useEffect(() => {
-    if (!branchId) return
-    API('GET', '/chatbot').then(setStatus).catch(console.error).finally(() => setLoading(false))
-  }, [branchId])
-
-  async function loadSecret() {
-    try {
-      const s = await API('GET', '/chatbot/secret')
-      setSecret(s)
-      setShowSecret(true)
-    } catch (err) {
-      alert(err.message)
-    }
-  }
-
-  if (loading) return <Notice>Cargando estado del chatbot...</Notice>
-
-  if (!status?.chatbot_authorized) {
-    return (
-      <div>
-        <Hero
-          eyebrow="Chatbot WhatsApp portable"
-          title="No autorizado aún"
-          description="El chatbot portable no está habilitado para esta sede. Contacta con el Super Admin de Oxidian para solicitar la autorización."
-        />
-        <Notice>El Super Admin debe autorizar esta sede desde el panel de administración para habilitar la descarga del chatbot portable.</Notice>
-      </div>
-    )
-  }
-
-  const downloadUrl = `/admin/chatbot/download/${branchId}`
-
-  return (
-    <div>
-      <Hero
-        eyebrow="Chatbot WhatsApp — Portable autorizado"
-        title="Tu chatbot local está listo"
-        description="Descarga el portable, configura el .env con tus datos y ejecuta iniciar.bat. El chatbot gestiona WhatsApp directamente desde tu PC usando tu base de datos."
-        signals={[
-          { label: 'Estado', value: status.chatbot_last_seen ? '🟢 Activo' : '⚫ No conectado' },
-          { label: 'Versión', value: status.chatbot_version || 'Pendiente' },
-        ]}
-      />
-      <Grid>
-        <Panel title="Descargar portable">
-          <Stats items={[
-            { label: 'Proveedor IA', value: 'Groq (gratis)', hint: 'Llama 70B incluido por defecto' },
-            { label: 'Anti-ban', value: 'Activado', hint: 'Protección automática contra bloqueos de WA' },
-            { label: 'Admin relay', value: 'Incluido', hint: 'Responde clientes desde tu propio WhatsApp' },
-          ]} />
-          <Actions>
-            <a href={downloadUrl} download style={{ textDecoration: 'none' }}>
-              <Button type="button">📦 Descargar ZIP portable</Button>
-            </a>
-            <GhostButton type="button" onClick={loadSecret}>
-              {showSecret ? '🔑 Ocultar clave' : '🔑 Ver WA_SECRET'}
-            </GhostButton>
-          </Actions>
-        </Panel>
-        <Panel title="Instrucciones rápidas" dark>
-          <div style={{ fontSize: 13, lineHeight: 2 }}>
-            <div>1. Descarga el ZIP y extráelo en tu PC</div>
-            <div>2. Abre el archivo <code>.env</code> y rellena tus credenciales</div>
-            <div>3. Haz doble clic en <code>iniciar.bat</code></div>
-            <div>4. Abre <code>http://localhost:3001/qr-page</code></div>
-            <div>5. Escanea el QR con tu WhatsApp</div>
-            <div>6. El bot queda activo y atiende clientes</div>
+    <div style={{ maxWidth:600 }}>
+      {error && <Alert type="error">{error}</Alert>}
+      {saved  && <Alert type="success">✓ Configuración guardada correctamente</Alert>}
+      <Card title="Configuración de la sede">
+        <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <Input label="Nombre de la sede" value={form.name||''}
+              onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+            <Input label="Teléfono" value={form.phone||''}
+              onChange={e=>setForm(f=>({...f,phone:e.target.value}))} />
           </div>
-          {showSecret && secret && (
-            <div style={{ marginTop: 16, background: 'var(--color-background-secondary)',
-              borderRadius: 8, padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>
-              <div style={{ color: 'var(--color-text-secondary)', marginBottom: 4 }}>WA_SECRET (incluido en el .env):</div>
-              <div style={{ wordBreak: 'break-all' }}>{secret.wa_secret}</div>
-              <div style={{ color: 'var(--color-text-secondary)', marginTop: 8, fontSize: 11 }}>
-                CHATBOT_STORE_ID: {secret.store_id}
-              </div>
-            </div>
-          )}
-        </Panel>
-      </Grid>
-    </div>
-  )
-}
-
-// ─── Página principal ─────────────────────────────────────────────────────────
-
-function AppointmentsTab({ config }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Citas</div>
-      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
-        Slot de {config?.slot_duration_min ?? 30} min · Hasta {config?.max_advance_days ?? 14} días de anticipación.
-        La vista completa de agenda estará disponible en la próxima actualización.
-      </div>
-    </div>
-  )
-}
-
-function TablesTab({ config }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🪑</div>
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Mesas</div>
-      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
-        {config?.total_tables ?? 0} mesas configuradas.
-        Zonas: {(config?.zones ?? ['salón']).join(', ')}.
-        Gestión de mesas y reservas disponible próximamente.
-      </div>
-    </div>
-  )
-}
-
-function VariantsTab({ config }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '3rem 2rem' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>👗</div>
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>Módulo de Variantes</div>
-      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 380, margin: '0 auto' }}>
-        Tallas: {(config?.standard_sizes ?? ['S','M','L','XL']).join(' · ')}.
-        Matriz de tallas y colores disponible próximamente.
-      </div>
-    </div>
-  )
-}
-
-export default function BranchAdminPage() {
-  const { branchId: jwtBranchId, storeId, tenantId, role } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = React.useState(searchParams.get('tab') || 'dashboard')
-  const [branchName, setBranchName] = React.useState('Mi Sede')
-  const [storeSlug, setStoreSlug] = React.useState('')
-  const [branchSlug, setBranchSlug] = React.useState('')
-
-  // Selector de sede para roles sin branchId en el JWT (tenant_owner, store_admin sin asignación)
-  const [selectedBranchId, setSelectedBranchId] = React.useState(null)
-  const [availableBranches, setAvailableBranches] = React.useState([])
-  const [loadingBranches, setLoadingBranches] = React.useState(false)
-  const branchId = jwtBranchId || selectedBranchId
-
-  const { isEnabled, getConfig, loading: modulesLoading } = useStoreModules()
-
-  // Tabs dinámicos según módulos activos
-  const visibleTabs = modulesLoading
-    ? ALL_TABS.filter(t => t.module === null)
-    : ALL_TABS.filter(t => !t.module || isEnabled(t.module))
-
-  // Cargar sedes disponibles cuando el JWT no trae branchId
-  React.useEffect(() => {
-    if (jwtBranchId) return                       // Ya lo tiene del JWT, no hace falta
-    const query = storeId
-      ? supabase.from('branches').select('id, name, city').eq('store_id', storeId).eq('status', 'active')
-      : tenantId
-        ? supabase.from('branches').select('id, name, city').eq('tenant_id', tenantId).eq('status', 'active')
-        : null
-    if (!query) return
-    setLoadingBranches(true)
-    query.order('name').then(({ data }) => {
-      setAvailableBranches(data ?? [])
-      if (data?.length === 1) setSelectedBranchId(data[0].id)  // Auto-seleccionar si solo hay una
-    }).finally(() => setLoadingBranches(false))
-  }, [jwtBranchId, storeId, tenantId])
-
-  React.useEffect(() => {
-    const tab = searchParams.get('tab')
-    if (tab && ALL_TABS.some(item => item.id === tab)) {
-      setActiveTab(tab)
-    }
-  }, [searchParams])
-
-  React.useEffect(() => {
-    if (!branchId) return
-    supabase.from('branches').select('name, slug, stores(slug)').eq('id', branchId).maybeSingle()
-      .then(({ data }) => {
-        if (data?.name) setBranchName(data.name)
-        if (data?.slug) setBranchSlug(data.slug)
-        if (data?.stores?.slug) setStoreSlug(data.stores.slug)
-      })
-  }, [branchId])
-
-  if (!branchId) {
-    // Mostrar selector de sede en lugar de error genérico
-    return (
-      <Shell>
-        <Hero
-          eyebrow="Panel de Sede"
-          title="Selecciona una sede"
-          description="Tu cuenta no tiene una sede asignada por defecto. Elige la sede que quieres gestionar."
-        />
-        {loadingBranches && <Notice>Cargando sedes disponibles...</Notice>}
-        {!loadingBranches && availableBranches.length === 0 && (
-          <Notice tone="error">
-            No hay sedes disponibles para tu cuenta. Contacta con el administrador.
-          </Notice>
-        )}
-        {!loadingBranches && availableBranches.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
-            {availableBranches.map(b => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => setSelectedBranchId(b.id)}
-                style={{
-                  padding: '16px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
-                  border: '1px solid var(--color-border-secondary)',
-                  background: 'var(--color-background-primary)',
-                  fontFamily: 'inherit', transition: '.15s',
-                }}
-              >
-                <div style={{ fontSize: 22, marginBottom: 6 }}>🏪</div>
-                <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--color-text-primary)' }}>{b.name}</div>
-                {b.city && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{b.city}</div>}
-              </button>
-            ))}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <Input label="Ciudad" value={form.city||''}
+              onChange={e=>setForm(f=>({...f,city:e.target.value}))} />
+            <Input label="Dirección" value={form.address||''}
+              onChange={e=>setForm(f=>({...f,address:e.target.value}))} />
           </div>
-        )}
-      </Shell>
-    )
-  }
-
-  const tabContent = {
-    dashboard:    <DashboardTab branchId={branchId} storeId={storeId} />,
-    products:     <ProductsTab storeId={storeId} />,
-    combos:       <CombosTab storeId={storeId} />,
-    stock:        <StockTab storeId={storeId} />,
-    orders:       <OrdersTab branchId={branchId} />,
-    staff:        <StaffTab storeId={storeId} storeSlug={storeSlug} branchSlug={branchSlug} />,
-    marketing:    <MarketingTab storeId={storeId} />,
-    affiliates:   <AffiliatesTab storeId={storeId} />,
-    loyalty:      <LoyaltyTab storeId={storeId} />,
-    reviews:      <ReviewsTab storeId={storeId} />,
-    config:       <ConfigTab branchId={branchId} />,
-    chatbot:      <ChatbotTab branchId={branchId} storeId={storeId} />,
-    appointments: <AppointmentsTab config={getConfig('mod_appointments')} />,
-    tables:       <TablesTab config={getConfig('mod_tables')} />,
-    variants:     <VariantsTab config={getConfig('mod_variants')} />,
-    finance:      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Módulo de Finanzas — próximamente</div>,
-  }
-
-  return (
-    <Shell>
-      <Hero
-        eyebrow={`Panel de sede · ${role}`}
-        title={branchName}
-        description="Gestiona productos, pedidos, stock, personal, marketing, afiliados y el chatbot portable desde un solo lugar."
-        signals={[
-          { label: 'Sede', value: branchId?.slice(-8) || '—' },
-          { label: 'Tienda', value: storeId || '—' },
-        ]}
-      />
-      {/* Si el branchId viene de selección manual (no del JWT), mostrar opción de cambiar */}
-      {!jwtBranchId && selectedBranchId && (
-        <div style={{ marginBottom: 12 }}>
-          <GhostButton type="button" style={{ fontSize: 12, padding: '4px 12px' }}
-            onClick={() => setSelectedBranchId(null)}>
-            ← Cambiar sede
-          </GhostButton>
-        </div>
-      )}
-      <TabBar tabs={visibleTabs} active={activeTab} onChange={nextTab => {
-        setActiveTab(nextTab)
-        const next = new URLSearchParams(searchParams)
-        next.set('tab', nextTab)
-        setSearchParams(next)
-      }} />
-      <div style={{ minHeight: 400 }}>
-        {tabContent[activeTab] || null}
-      </div>
-    </Shell>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+            <Input label="Hora apertura" type="number" min="0" max="23" value={form.open_hour||10}
+              onChange={e=>setForm(f=>({...f,open_hour:e.target.value}))} />
+            <Input label="Hora cierre" type="number" min="0" max="23" value={form.close_hour||22}
+              onChange={e=>setForm(f=>({...f,close_hour:e.target.value}))} />
+            <Input label="Días activos" value={form.open_days||'L-D'}
+              onChange={e=>setForm(f=>({...f,open_days:e.target.value}))}
+              placeholder="L-D ó Lun,Mar,Mié" />
+          </div>
+          <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:13}}>
+            <input type="checkbox" checked={!!form.public_visible}
+              onChange={e=>setForm(f=>({...f,public_visible:e.target.checked}))} />
+            Sede visible públicamente en el menú
+          </label>
+          <Btn type="submit" disabled={saving} size="lg">{saving?'Guardando…':'Guardar configuración'}</Btn>
+        </form>
+      </Card>
+    </div>
   )
 }
