@@ -103,7 +103,7 @@ export default function SuperAdminPage() {
   const [ownerSaving, setOwnerSaving] = React.useState(false)
   const [result, setResult] = React.useState(null)
   const [ownerResult, setOwnerResult] = React.useState(null)
-  const [activeTab, setActiveTab] = React.useState('stores')
+  const [activeTab, setActiveTab] = React.useState('owners')
 
   const refreshCatalog = React.useCallback(async () => {
     setLoading(true)
@@ -575,19 +575,18 @@ function PipelineTab() {
     if (!ok) return
     setSaving(r.id)
     try {
-      const { error } = await supabaseAuth.auth.signInWithOtp({
-        email: r.email,
-        options: {
-          shouldCreateUser: true,
-          emailRedirectTo: `${window.location.origin}/onboarding`,
-        },
+      await adminApi('POST', `/pipeline/${r.id}/invite`, {
+        redirectTo: `${window.location.origin}/onboarding`,
       })
-      if (error) throw error
-      await advance(r.id, 'onboarding')
+      setRequests(rs => rs.map(item => (
+        item.id === r.id
+          ? { ...item, status: 'onboarding', updated_at: new Date().toISOString() }
+          : item
+      )))
       window.alert(
         `Enlace enviado a ${r.email}.\n` +
         `El usuario hara clic y llegara al wizard para configurar su tienda.\n\n` +
-        `Si no llega el email, verifica la configuracion de Supabase Auth > Email Templates.`
+        `Si no llega el email, revisa SMTP y las plantillas de Auth en Supabase.`
       )
     } catch (e) { window.alert('Error: ' + e.message) }
     setSaving(null)

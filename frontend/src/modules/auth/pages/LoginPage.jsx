@@ -2,21 +2,10 @@ import React from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { supabaseAuth } from '../../../legacy/lib/supabase'
 import { useAuth } from '../../../core/providers/AuthProvider'
-
-const ROLE_HOME = {
-  super_admin: '/admin',
-  tenant_owner: '/tenant/admin',
-  tenant_admin: '/tenant/admin',
-  store_admin: '/branch/admin',
-  store_operator: '/branch/admin',
-  branch_manager: '/branch/admin',
-  kitchen: '/branch/kitchen',
-  rider: '/branch/riders',
-  cashier: '/branch/admin',
-}
+import { ROLE_HOME } from '../../../core/router/AppRouter'
 
 export default function LoginPage() {
-  const { isAuthenticated, loading, role } = useAuth()
+  const { isAuthenticated, loading, role, authError } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from?.pathname || null
@@ -28,30 +17,66 @@ export default function LoginPage() {
   const [error, setError] = React.useState('')
   const [success, setSuccess] = React.useState('')
 
-  if (loading) return null
-  if (isAuthenticated && role !== 'anonymous') {
-    // Super admin siempre va a /admin, sin importar from dónde venía
-    const dest = ROLE_HOME[role] || '/'
+  // Redirigir si ya está autenticado con rol válido
+  if (!loading && isAuthenticated && role && role !== 'anonymous') {
+    const dest = from && from !== '/login' ? from : (ROLE_HOME[role] || '/')
     return <Navigate to={dest} replace />
+  }
+
+  // Si hay error de membresía, no quedarse en login (el HomeEntry lo maneja)
+  if (!loading && isAuthenticated && authError) {
+    return <Navigate to="/" replace />
   }
 
   async function handleLogin(e) {
     e.preventDefault()
-    setBusy(true); setError(''); setSuccess('')
-    const { data, error: err } = await supabaseAuth.auth.signInWithPassword({ email: email.trim(), password })
+    setBusy(true)
+    setError('')
+    setSuccess('')
+
+    const { data, error: err } = await supabaseAuth.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+
     if (err) {
-      setError(err.message)
+      setError(
+        err.message === 'Invalid login credentials'
+          ? 'Correo o contraseña incorrectos'
+          : err.message
+      )
       setBusy(false)
       return
     }
-    // Debug temporal — ver en consola qué devuelve la sesión
-    console.log('[Login] sesión OK, user_id:', data?.user?.id)
+
+    if (!data?.user?.id) {
+      setError('No se pudo obtener la sesión. Intenta de nuevo.')
+      setBusy(false)
+      return
+    }
+
+    // El AuthProvider detecta el cambio vía onAuthStateChange y hace la
+    // navegación automáticamente una vez que el role esté resuelto.
+    // El busy se mantiene hasta que el componente se desmonte (redirect)
+    // o hasta que el error aparezca.
+    setSuccess('Verificando acceso...')
+    // Fallback: si pasados 5 segundos no hay redirect, mostrar error
+    const timeout = setTimeout(() => {
+      setBusy(false)
+      setSuccess('')
+      setError('No se pudo cargar tu perfil de acceso. Verifica que tu cuenta tenga un rol asignado.')
+    }, 5000)
+
+    // Cleanup en caso de que el componente se desmonte (por redirect)
+    return () => clearTimeout(timeout)
   }
 
   async function handleMagicLink(e) {
     e.preventDefault()
     if (!email.trim()) { setError('Ingresa tu correo'); return }
-    setBusy(true); setError(''); setSuccess('')
+    setBusy(true)
+    setError('')
+    setSuccess('')
     const { error: err } = await supabaseAuth.auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: window.location.origin },
@@ -87,7 +112,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Toggle */}
+        {/* Toggle modo */}
         <div style={{ display: 'flex', gap: 4, background: 'var(--color-background-secondary)',
           borderRadius: 8, padding: 4, marginBottom: '1.5rem' }}>
           {[['login', 'Contraseña'], ['magic', 'Enlace mágico']].map(([m, label]) => (
@@ -123,12 +148,22 @@ export default function LoginPage() {
             </div>
           )}
 
-          {error && <div style={{ fontSize: 13, color: 'var(--color-text-danger)',
-            background: 'var(--color-background-danger)', borderRadius: 8,
-            padding: '8px 12px', marginBottom: '1rem' }}>{error}</div>}
-          {success && <div style={{ fontSize: 13, color: 'var(--color-text-success)',
-            background: 'var(--color-background-success)', borderRadius: 8,
-            padding: '8px 12px', marginBottom: '1rem' }}>{success}</div>}
+          {error && (
+            <div style={{ fontSize: 13, color: 'var(--color-text-danger)',
+              background: 'var(--color-background-danger)', borderRadius: 8,
+              padding: '8px 12px', marginBottom: '1rem' }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div style={{ fontSize: 13, color: 'var(--color-text-success)',
+              background: 'var(--color-background-success)', borderRadius: 8,
+              padding: '8px 12px', marginBottom: '1rem',
+              display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+              {success}
+            </div>
+          )}
 
           <button type="submit" disabled={busy} style={{
             width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
@@ -136,7 +171,7 @@ export default function LoginPage() {
             fontSize: 14, fontWeight: 500, fontFamily: 'inherit',
             cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.7 : 1,
           }}>
-            {busy ? 'Procesando...' : mode === 'login' ? 'Entrar' : 'Enviar enlace'}
+            {busy ? (mode === 'login' ? 'Entrando...' : 'Enviando...') : (mode === 'login' ? 'Entrar' : 'Enviar enlace')}
           </button>
         </form>
 

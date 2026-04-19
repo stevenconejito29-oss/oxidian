@@ -151,6 +151,44 @@ export const MENU_STYLE_PRESETS = [
       storefront_secondary_cta_label: 'Ver secciones',
     },
   },
+  {
+    id: 'despensa',
+    label: 'Barrio',
+    badge: 'Everyday',
+    icon: '▣',
+    description: 'Estilo cercano y practico para tiendas de barrio, despensas y negocios de recompra rapida.',
+    bestFor: 'Minimarkets, licoreras, farmacias locales, mascotas y tiendas de conveniencia.',
+    flowLabel: 'Cercania > categorias claras > reposicion > checkout',
+    nicheLabel: 'Ideal para compra repetitiva y surtido diario',
+    preview: {
+      surface: 'linear-gradient(135deg,#f7f4ec,#ebe1cf)',
+      accent: '#365314',
+      text: '#273127',
+      chip: 'rgba(54,83,20,0.12)',
+    },
+    settings: {
+      menu_layout: 'despensa',
+      theme_primary_color: '#365314',
+      theme_secondary_color: '#A3B18A',
+      theme_accent_color: '#D97706',
+      theme_surface_color: '#F7F4EC',
+      theme_text_color: '#273127',
+      theme_font_display: 'Bricolage Grotesque',
+      theme_font_body: 'Manrope',
+      theme_button_radius: '16px',
+      theme_daisy_theme: 'emerald',
+      storefront_badge_text: 'BARRIO ACTIVO',
+      storefront_announcement: 'Reposicion diaria, promociones visibles y atencion directa por sede.',
+      storefront_search_placeholder: 'Busca categoria, marca o producto de todos los dias',
+      storefront_intro_eyebrow: 'Template 05 · Neighborhood commerce',
+      storefront_intro_title: 'Un menu pensado para comprar rapido y volver sin friccion.',
+      storefront_intro_text: 'Ideal para surtido diario, reposicion veloz y pedidos donde la claridad pesa mas que el ruido visual.',
+      storefront_story_quote: 'Cuando la recompra manda, el storefront debe sentirse familiar, directo y confiable.',
+      storefront_story_author: 'Operacion de tienda',
+      storefront_primary_cta_label: 'Comprar ahora',
+      storefront_secondary_cta_label: 'Ver pasillos',
+    },
+  },
 ]
 
 export const STORE_VIEW_FLOW_STEPS = [
@@ -233,7 +271,8 @@ export function buildExperienceSettingsPatch(styleId = 'delivery', options = {})
 
 export function recommendMenuStyleForBusinessType(businessType = 'food') {
   const normalized = String(businessType || '').trim().toLowerCase()
-  if (normalized === 'retail' || normalized === 'beauty') return 'vitrina'
+  if (normalized === 'retail') return 'despensa'
+  if (normalized === 'beauty') return 'vitrina'
   if (normalized === 'service') return 'minimal'
   if (normalized === 'other') return 'portfolio'
   return 'delivery'

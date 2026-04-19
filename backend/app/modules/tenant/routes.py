@@ -62,9 +62,23 @@ def tenant_dashboard():
 
     stores_res = sb.table("stores").select("id,name,status", count="exact", head=True).eq("tenant_id", tid).execute()
     branches_res = sb.table("branches").select("id,name,status", count="exact", head=True).eq("tenant_id", tid).execute()
-    orders_res = sb.table("orders").select("id,total", count="exact").eq("store_id", sid or "").gte(
-        "created_at", "now()::date"
-    ).execute()
+    orders_query = sb.table("orders").select("id,total", count="exact").gte("created_at", "now()::date")
+    if sid:
+        orders_query = orders_query.eq("store_id", sid)
+    else:
+        tenant_store_rows = sb.table("stores").select("id").eq("tenant_id", tid).execute().data or []
+        tenant_store_ids = [row["id"] for row in tenant_store_rows if row.get("id")]
+        if tenant_store_ids:
+            orders_query = orders_query.in_("store_id", tenant_store_ids)
+        else:
+            return jsonify({
+                "tenant_id": tid,
+                "stores": stores_res.count or 0,
+                "branches": branches_res.count or 0,
+                "orders_today": 0,
+                "revenue_today": 0.0,
+            })
+    orders_res = orders_query.execute()
 
     orders_today = orders_res.data or []
     revenue_today = sum(float(o.get("total", 0) or 0) for o in orders_today)
@@ -88,6 +102,92 @@ def list_tenant_stores():
     return jsonify(res.data or [])
 
 
+@tenant_bp.post("/stores")
+def create_tenant_store():
+    _require_tenant_manager()
+    sb = _supa()
+    scope = _scope()
+    body = request.get_json(silent=True) or {}
+
+    name = _clean_text(body.get("name"))
+    store_id = _clean_text(body.get("id") or body.get("slug")).lower()
+    slug = _clean_text(body.get("slug") or store_id).lower()
+    niche = _clean_text(body.get("niche") or body.get("business_niche") or "universal").lower()
+    business_type = _clean_text(body.get("business_type") or "food").lower()
+    city = _clean_text(body.get("city"))
+    notes = _clean_text(body.get("notes"))
+
+    if not name:
+        abort(400, "name requerido")
+    if not store_id:
+        abort(400, "slug requerido")
+
+    store_id = "".join(ch for ch in store_id if ch.isalnum() or ch in {"-", "_"}).strip("-_")
+    slug = "".join(ch for ch in slug if ch.isalnum() or ch == "-").strip("-")
+    if not store_id or not slug:
+        abort(400, "slug invalido")
+
+    payload = {
+        "id": store_id,
+        "slug": slug,
+        "tenant_id": scope["tenant_id"],
+        "name": name,
+        "city": city,
+        "notes": notes,
+        "status": body.get("status") or "active",
+        "business_type": business_type or "food",
+        "niche": niche or "universal",
+        "template_id": body.get("template_id"),
+        "theme_tokens": body.get("theme_tokens") or {},
+        "public_visible": bool(body.get("public_visible", True)),
+        "owner_email": _clean_text(body.get("owner_email")),
+        "owner_name": _clean_text(body.get("owner_name")),
+    }
+
+    try:
+        inserted = sb.table("stores").insert(payload).execute().data or []
+    except Exception as exc:
+        abort(400, f"No se pudo crear la tienda: {exc}")
+
+    created_store = inserted[0] if inserted else payload
+
+    try:
+        sb.rpc("apply_niche_preset", {
+            "p_store_id": created_store["id"],
+            "p_tenant_id": scope["tenant_id"],
+            "p_niche_id": payload["niche"],
+        }).execute()
+    except Exception:
+        pass
+
+    initial_branch_name = _clean_text(body.get("initial_branch_name"))
+    initial_branch_slug = _clean_text(body.get("initial_branch_slug")).lower()
+    created_branch = None
+    if initial_branch_name:
+        branch_payload = {
+            "tenant_id": scope["tenant_id"],
+            "store_id": created_store["id"],
+            "slug": initial_branch_slug or "principal",
+            "name": initial_branch_name,
+            "address": _clean_text(body.get("initial_branch_address")),
+            "city": _clean_text(body.get("initial_branch_city") or city),
+            "phone": _clean_text(body.get("initial_branch_phone")),
+            "status": "active",
+            "is_primary": True,
+            "public_visible": True,
+        }
+        try:
+            branch_res = sb.table("branches").insert(branch_payload).execute()
+            created_branch = (branch_res.data or [None])[0]
+        except Exception as exc:
+            abort(400, f"La tienda se creo, pero la sede inicial fallo: {exc}")
+
+    return jsonify({
+        "store": created_store,
+        "branch": created_branch,
+    }), 201
+
+
 @tenant_bp.get("/stores/<store_id>")
 def get_tenant_store(store_id):
     sb = _supa()
@@ -105,8 +205,10 @@ def update_tenant_store(store_id):
     sb = _supa()
     scope = _scope()
     body = request.get_json(silent=True) or {}
-    allowed = ["name", "status", "template_id", "theme_tokens",
-               "public_visible", "business_type", "city"]
+    allowed = [
+        "name", "slug", "status", "template_id", "theme_tokens",
+        "public_visible", "business_type", "niche", "city", "notes",
+    ]
     patch = {k: v for k, v in body.items() if k in allowed}
     if not patch:
         abort(400, "Sin campos válidos")
@@ -139,9 +241,17 @@ def create_tenant_branch():
     for field in required:
         if not body.get(field):
             abort(400, f"Campo requerido: {field}")
+    store_id = body.get("store_id") or scope.get("store_id")
+    if not store_id:
+        abort(400, "store_id requerido")
+
+    store = sb.table("stores").select("id,tenant_id").eq("id", store_id).maybe_single().execute().data
+    if not store or store.get("tenant_id") != scope["tenant_id"]:
+        abort(400, "La tienda no pertenece al tenant activo")
+
     payload = {
         "tenant_id": scope["tenant_id"],
-        "store_id": scope["store_id"],
+        "store_id": store_id,
         "slug": body["slug"].lower().strip(),
         "name": body["name"].strip(),
         "address": body.get("address", ""),

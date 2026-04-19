@@ -232,3 +232,53 @@
 - Se corrige el contrato de `landing_requests` agregando `source`, que ya era usado por el landing.
 - Los tabs dinamicos dejan de depender de una tabla inventada adicional; ahora la resolucion base sale de `store_process_profiles` y del nicho de la tienda.
 - Se corrige el `insert into store_process_profiles` de la migracion 0005, que tenia 21 columnas y solo 20 expresiones.
+
+## Iteracion 2026-04-19 - auth productiva, super admin y panel de dueno
+
+### Decision de arquitectura
+
+- El backend deja de confiar en headers `X-App-Role`, `X-Tenant-Id`, `X-Store-Id` y `X-Branch-Id` en produccion.
+- El contexto de identidad de Flask ahora se resuelve desde `user_memberships` usando el `sub` del JWT de Supabase como fuente canonica.
+- La raiz `/` ya no puede mostrar el landing a un usuario autenticado; ahora redirige al panel correcto segun rol.
+- El storefront publico vuelve a usar el renderer legacy, porque es el que respeta el motor real de estilos y layouts del menu.
+
+### Correcciones aplicadas
+
+- `backend/app/core/auth.py`
+  - agrega resolucion server-side de membresia activa por prioridad de rol
+  - limita headers debug a `ALLOW_INSECURE_LOCAL_AUTH`
+  - usa `user_memberships` para derivar `app_role`, `tenant_id`, `store_id` y `branch_id`
+- `backend/app/modules/tenant/routes.py`
+  - agrega `POST /tenant/stores` para crear tiendas desde el panel del dueno
+  - mejora `POST /tenant/branches` para aceptar `store_id` explicito validado
+  - amplía `PATCH /tenant/stores/<store_id>` con campos de negocio reales
+  - mejora `GET /tenant/dashboard` para agregar pedidos del tenant aunque no haya `store_id` scopeado
+- `frontend/src/core/router/AppRouter.jsx`
+  - redirige `/` al home correcto por rol autenticado
+  - publica `/storefront/menu` y `/s/:storeSlug/menu` con `legacy/pages/Menu.jsx`
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+  - el tab por defecto pasa a `owners`
+  - `PipelineTab` vuelve a invitar via Flask `POST /admin/pipeline/:id/invite`
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - se reescribe sobre `tenantApi`
+  - el dueno ya puede crear tiendas, crear sedes, crear cuentas de staff, pausar/reactivar accesos y resetear password
+  - integra `AdminStoreCustomizationPanel` para modulos, flujo operativo y storefront
+- `frontend/src/legacy/lib/storeExperience.js`
+  - agrega un quinto preset real de menu: `despensa` / `Barrio`
+- `frontend/src/legacy/pages/Menu.jsx`
+  - trata `despensa` como una familia visual operativa del layout de barrio/minimal
+
+### Validacion
+
+- `npm run build` en `frontend`: correcto
+- `compileall backend/app` usando `backend/.venv/Scripts/python.exe`: correcto
+
+### Estado funcional esperado
+
+- `pepemellamoyoo@oxidian.app` ya no debe caer de nuevo al landing cuando la sesion resuelva `super_admin`; debe entrar a `/admin`
+- el super admin puede abrir directamente la gestion de dueños y crear cuentas owner/admin de tenant
+- el owner, al entrar con su propia cuenta, recibe un panel con:
+  - creacion de tiendas
+  - creacion de sedes
+  - creacion de staff con roles scopeados
+  - personalizacion modular y de menu por tienda

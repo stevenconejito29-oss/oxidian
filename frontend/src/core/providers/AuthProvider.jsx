@@ -36,14 +36,28 @@ const ROLE_PRIORITY = [
   'rider',
 ]
 
-export function AuthProvider({ children }) {
-  const [session,    setSession]    = React.useState(null)
-  const [membership, setMembership] = React.useState(null)
-  const [loading,    setLoading]    = React.useState(true)
+// Reintentos cuando la membresía falla (ej: RLS tardía en propagarse)
+const MAX_MEMBERSHIP_RETRIES = 3
+const MEMBERSHIP_RETRY_DELAY_MS = 800
 
-  // ── Carga TODAS las membresías activas y elige la de mayor jerarquía
-  async function loadMembership(userId) {
-    if (!userId) { setMembership(null); return }
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export function AuthProvider({ children }) {
+  const [session,         setSession]         = React.useState(null)
+  const [membership,      setMembership]      = React.useState(null)
+  const [loading,         setLoading]         = React.useState(true)
+  // null = sin error, 'membership_not_found' = autenticado pero sin membresía
+  const [authError,       setAuthError]       = React.useState(null)
+
+  // ── Carga membresías con reintentos para tolerar latencia RLS ────
+  async function loadMembership(userId, retryCount = 0) {
+    if (!userId) {
+      setMembership(null)
+      setAuthError(null)
+      return
+    }
     try {
       const { data, error } = await supabaseAuth
         .from('user_memberships')
@@ -53,12 +67,24 @@ export function AuthProvider({ children }) {
 
       if (error) {
         console.warn('[AuthProvider] loadMembership error:', error.message)
+        // Si falla con recursión RLS, reintentar
+        if (retryCount < MAX_MEMBERSHIP_RETRIES) {
+          await sleep(MEMBERSHIP_RETRY_DELAY_MS)
+          return loadMembership(userId, retryCount + 1)
+        }
         setMembership(null)
+        setAuthError('membership_load_failed')
         return
       }
 
       if (!data || data.length === 0) {
+        if (retryCount < MAX_MEMBERSHIP_RETRIES) {
+          // Puede que RLS tarde un momento en propagarse tras el login
+          await sleep(MEMBERSHIP_RETRY_DELAY_MS)
+          return loadMembership(userId, retryCount + 1)
+        }
         setMembership(null)
+        setAuthError('membership_not_found')
         return
       }
 
@@ -71,19 +97,25 @@ export function AuthProvider({ children }) {
 
       console.log('[AuthProvider] rol resuelto:', sorted[0].role)
       setMembership(sorted[0])
+      setAuthError(null)
     } catch (e) {
       console.warn('[AuthProvider] loadMembership exception:', e)
+      if (retryCount < MAX_MEMBERSHIP_RETRIES) {
+        await sleep(MEMBERSHIP_RETRY_DELAY_MS)
+        return loadMembership(userId, retryCount + 1)
+      }
       setMembership(null)
+      setAuthError('membership_exception')
     }
   }
 
   React.useEffect(() => {
     let mounted = true
 
-    // ── Aplica una sesión de Supabase Auth (login nativo de admin/tenant/store)
+    // ── Aplica una sesión de Supabase Auth ────────────────────────
     async function applyNativeSession(s) {
       if (!s?.user?.id) {
-        if (mounted) { setSession(null); setMembership(null); setLoading(false) }
+        if (mounted) { setSession(null); setMembership(null); setLoading(false); setAuthError(null) }
         return
       }
       persistStoredSession(STORAGE_KEYS.admin, {
@@ -94,12 +126,12 @@ export function AuthProvider({ children }) {
           : null,
         _source: 'supabaseAuth',
       })
-      // CRÍTICO: cargar membership ANTES de setSession para tener el role listo
+      // Cargar membership ANTES de setLoading(false) para tener el role listo
       await loadMembership(s.user.id)
       if (mounted) { setSession(s); setLoading(false) }
     }
 
-    // ── Aplica una sesión legacy de staff (PIN login)
+    // ── Aplica una sesión legacy de staff (PIN login) ─────────────
     function applyLegacySession() {
       const active = readActiveStoredSession()
       const s = active ? buildSessionFromStored(active.stored) : null
@@ -123,9 +155,10 @@ export function AuthProvider({ children }) {
       if (!s) {
         const current = loadStoredSession(STORAGE_KEYS.admin)
         if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
-        if (mounted) { setSession(null); setMembership(null) }
+        if (mounted) { setSession(null); setMembership(null); setAuthError(null) }
         return
       }
+      // Usamos setTimeout(0) para evitar el warning de React sobre updates durante render
       window.setTimeout(() => {
         if (!mounted) return
         applyNativeSession(s)
@@ -150,6 +183,16 @@ export function AuthProvider({ children }) {
     for (const key of Object.values(STORAGE_KEYS)) clearStoredSession(key)
     setSession(null)
     setMembership(null)
+    setAuthError(null)
+  }
+
+  // Permite forzar una recarga de la membresía desde cualquier componente
+  async function retryLoadMembership() {
+    const userId = session?.user?.id
+    if (!userId) return
+    setLoading(true)
+    await loadMembership(userId)
+    setLoading(false)
   }
 
   const value = {
@@ -157,6 +200,7 @@ export function AuthProvider({ children }) {
     user:            session?.user || null,
     membership,
     loading,
+    authError,
     isAuthenticated: Boolean(session),
     role:            membership?.role      || 'anonymous',
     tenantId:        membership?.tenant_id  || null,
@@ -167,6 +211,7 @@ export function AuthProvider({ children }) {
     isStoreAdmin:    ['store_admin', 'store_operator'].includes(membership?.role),
     isBranchOp:      ['branch_manager', 'kitchen', 'rider', 'cashier'].includes(membership?.role),
     signOut,
+    retryLoadMembership,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -384,6 +384,10 @@ export default function Menu() {
   const reviewRewardPercent = Math.max(0, Number(settings.review_reward_percent || '10') || 10)
   const heroTheme  = deriveHeroTheme(loyalty.currentLevel?.color || settings.theme_primary_color || null)
   const menuLayout = settings.menu_layout || 'delivery'
+  const isDelivery = menuLayout === 'delivery'
+  const isVitrina = menuLayout === 'vitrina'
+  const isPortfolio = menuLayout === 'portfolio'
+  const isMinimal = menuLayout === 'minimal' || menuLayout === 'despensa'
   const layoutPreset = getMenuStylePreset(menuLayout)
   const layoutDefaults = layoutPreset.settings || {}
   const promoEnabled = settings.ad_enabled === 'true' && Boolean(settings.ad_text || settings.ad_cta || settings.ad_url)
@@ -410,30 +414,30 @@ export default function Menu() {
   const footerCopy = `© ${new Date().getFullYear()} ${businessName}${locationLabel ? ` · ${locationLabel}` : ''}`
   const storeHoursLabel = String(settings.store_hours_text || '').trim() || `${settings.open_hour || '10'}:00 - ${settings.close_hour || '21'}:00`
   const supportPhoneLabel = String(settings.support_phone || settings.whatsapp_number || '').trim()
-  const cartSheetTitleText = menuLayout === 'delivery'
+  const cartSheetTitleText = isDelivery
     ? 'Tu pedido artesanal'
-    : menuLayout === 'vitrina'
+    : isVitrina
       ? 'Tu bolsa boutique'
-      : menuLayout === 'minimal'
+      : isMinimal
         ? 'Tu cesta del barrio'
-        : menuLayout === 'portfolio'
+        : isPortfolio
           ? 'Tu pedido editorial'
           : 'Tu pedido'
-  const cartSheetCloseText = menuLayout === 'portfolio' ? 'Volver' : 'Cerrar'
-  const bottomCatalogLabel = menuLayout === 'portfolio'
+  const cartSheetCloseText = isPortfolio ? 'Volver' : 'Cerrar'
+  const bottomCatalogLabel = isPortfolio
     ? 'Carta'
-    : menuLayout === 'minimal'
+    : isMinimal
       ? 'Pasillos'
-      : menuLayout === 'vitrina'
+      : isVitrina
         ? 'Coleccion'
         : 'Catalogo'
-  const bottomHomeIcon = menuLayout === 'delivery'
+  const bottomHomeIcon = isDelivery
     ? '🧁'
-    : menuLayout === 'vitrina'
+    : isVitrina
       ? '✦'
-      : menuLayout === 'minimal'
+      : isMinimal
         ? '🏪'
-        : menuLayout === 'portfolio'
+        : isPortfolio
           ? 'CC'
           : menuLayout === 'mascotas'
             ? '🐾'
@@ -559,7 +563,7 @@ export default function Menu() {
     if (filteredCombos.length <= 0) return null
     return (
       <section ref={el => { sectionRefs.current.combos = el }} className={styles.sectionShell}>
-        {menuLayout === 'delivery' && <SectionFruitRain type="combos" />}
+        {isDelivery && <SectionFruitRain type="combos" />}
         <div className={styles.section}>
           <div className={styles.sectionHead}>
             <div className={styles.sectionHeadLeft}>
@@ -590,7 +594,7 @@ export default function Menu() {
       const prods = productCategories[cat] || []
       return (
         <section key={cat} ref={el => { sectionRefs.current[cat] = el }} className={styles.sectionShell}>
-          {menuLayout === 'delivery' && <SectionFruitRain type="products" />}
+          {isDelivery && <SectionFruitRain type="products" />}
           <div className={styles.section}>
             <div className={styles.sectionHead}>
               <div className={styles.sectionHeadLeft}>
@@ -1012,10 +1016,10 @@ export default function Menu() {
 
   // Selector del nav correcto según nicho
   function TopNav() {
-    if (menuLayout === 'delivery') return <NavArtisan />
-    if (menuLayout === 'vitrina')  return <NavBoutique />
-    if (menuLayout === 'minimal')  return <NavBarrio />
-    if (menuLayout === 'portfolio') return <NavEditorial />
+    if (isDelivery) return <NavArtisan />
+    if (isVitrina) return <NavBoutique />
+    if (isMinimal) return <NavBarrio />
+    if (isPortfolio) return <NavEditorial />
     if (menuLayout === 'moda')     return <NavModa />
     if (menuLayout === 'mascotas' || menuLayout === 'regalos' || menuLayout === 'despensa') return <NavTrust />
     return <NavBoutique />
@@ -1024,7 +1028,7 @@ export default function Menu() {
   return (
     <div className={styles.page} data-menu-layout={menuLayout}>
       <div className={styles.fruitCanvas} aria-hidden="true">
-        {menuLayout === 'delivery' && fruitItems.map((fruit, i) => (
+        {isDelivery && fruitItems.map((fruit, i) => (
           <span key={`${fruit.emoji}-${i}`} className={styles.fruit} style={{
             '--fruit-left': fruit.left, '--fruit-size': fruit.size,
             '--fruit-duration': fruit.duration, '--fruit-delay': fruit.delay, '--fruit-drift': fruit.drift,
@@ -1133,7 +1137,7 @@ export default function Menu() {
             </div>
           </section>
         )}
-        {menuLayout === 'vitrina' && (
+        {isVitrina && (
           <>
             {renderPromoPanel()}
             <section className={styles.layoutFeatureBand}>
@@ -1228,7 +1232,7 @@ export default function Menu() {
           </>
         )}
 
-        {menuLayout === 'portfolio' && (
+        {isPortfolio && (
           <>
             <section className={styles.layoutStoryPanel}>
               <div className={styles.layoutStoryCopy}>
@@ -1273,7 +1277,7 @@ export default function Menu() {
           </>
         )}
 
-        {menuLayout === 'minimal' && (
+        {isMinimal && (
           <>
             <section className={styles.layoutQuickStrip}>
               {storefrontMetrics.map(metric => (
@@ -1300,7 +1304,7 @@ export default function Menu() {
 
         {/* categoryRail delivery → integrado en NavDelivery */}
 
-        {menuLayout === 'delivery' && promoEnabled && (
+        {isDelivery && promoEnabled && (
           <section className={styles.promoPanel} style={{ '--promo-color': settings.ad_color || '#E8607A' }}>
             {promoImage && <img src={promoImage} alt="" className={styles.promoImage} onError={e => { e.currentTarget.style.display='none' }} />}
             <p className={styles.promoKicker}>{promoTag}</p>
@@ -1312,9 +1316,9 @@ export default function Menu() {
           </section>
         )}
 
-        {menuLayout === 'delivery' && filteredCombos.length > 0 && (
+        {isDelivery && filteredCombos.length > 0 && (
           <section ref={el => { sectionRefs.current.combos = el }} className={styles.sectionShell}>
-            {menuLayout === 'delivery' && <SectionFruitRain type="combos" />}
+            {isDelivery && <SectionFruitRain type="combos" />}
             <div className={styles.section}>
               <div className={styles.sectionHead}>
                 <div className={styles.sectionHeadLeft}>
@@ -1323,7 +1327,7 @@ export default function Menu() {
                 </div>
                 <span className={`${styles.sectionTypeBadge} ${styles.sectionTypeBadgeCombo}`}>{filteredCombos.length} combos</span>
               </div>
-              <div className={menuLayout === 'portfolio' || menuLayout === 'minimal' ? styles.gridList : styles.grid}>
+              <div className={isPortfolio || isMinimal ? styles.gridList : styles.grid}>
                 {filteredCombos.map(combo => (
                   <ComboAccessCard key={combo.id} combo={combo} isStoreOpen={isOpen}
                     clubAccess={buildClubAccessMeta(combo, loyalty.currentLevel, loyalty.levels)}
@@ -1336,7 +1340,7 @@ export default function Menu() {
           </section>
         )}
 
-        {menuLayout === 'delivery' && (loading ? (
+        {isDelivery && (loading ? (
           <section className={styles.section}>
             <div className={styles.grid}>{Array.from({ length: 6 }, (_, i) => <div key={i} className={styles.skeletonCard} />)}</div>
           </section>
@@ -1345,7 +1349,7 @@ export default function Menu() {
             const prods = productCategories[cat] || []
             return (
               <section key={cat} ref={el => { sectionRefs.current[cat] = el }} className={styles.sectionShell}>
-                {menuLayout === 'delivery' && <SectionFruitRain type="products" />}
+                {isDelivery && <SectionFruitRain type="products" />}
                 <div className={styles.section}>
                   <div className={styles.sectionHead}>
                     <div className={styles.sectionHeadLeft}>
@@ -1356,7 +1360,7 @@ export default function Menu() {
                       {prods.length} {prods.length === 1 ? 'plato' : 'platos'}
                     </span>
                   </div>
-                  <div className={menuLayout === 'portfolio' || menuLayout === 'minimal' ? styles.gridList : styles.grid}>
+                  <div className={isPortfolio || isMinimal ? styles.gridList : styles.grid}>
                     {prods.map(product => (
                       <ProductAccessCard key={product.id} product={{ ...product, is_cart_limit_reached: productReachedLimit(product) }}
                         clubAccess={buildClubAccessMeta(product, loyalty.currentLevel, loyalty.levels)}
@@ -1370,8 +1374,8 @@ export default function Menu() {
           })
         ))}
 
-        {menuLayout === 'delivery' && <section ref={el => { sectionRefs.current[REVIEW_CATEGORY_ID] = el }} className={styles.reviewsSection}>
-          {menuLayout === 'delivery' && <SectionFruitRain type="reviews" />}
+        {isDelivery && <section ref={el => { sectionRefs.current[REVIEW_CATEGORY_ID] = el }} className={styles.reviewsSection}>
+          {isDelivery && <SectionFruitRain type="reviews" />}
           <div className={styles.reviewsHeading}>
             <p className={styles.reviewsKicker}>// TESTIMONIOS REALES</p>
             <h2 className={styles.reviewsTitle}>LO QUE DICEN</h2>
@@ -1854,7 +1858,7 @@ export default function Menu() {
           <button type="button" className={styles.bottomNavItem}
             onClick={() => scrollToCategory(navigationCategories[0]?.id)} aria-label="Catálogo">
             <span className={styles.bottomNavIcon}>
-              {menuLayout === 'portfolio' ? '✺' : menuLayout === 'minimal' ? '🧺' : menuLayout === 'vitrina' ? '✦' : '🗂️'}
+              {isPortfolio ? '✺' : isMinimal ? '🧺' : isVitrina ? '✦' : '🗂️'}
             </span>
             <span className={styles.bottomNavLabel}>{bottomCatalogLabel}</span>
           </button>

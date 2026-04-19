@@ -20,6 +20,19 @@ class AuthContext:
         return asdict(self)
 
 
+ROLE_PRIORITY = [
+    "super_admin",
+    "tenant_owner",
+    "tenant_admin",
+    "store_admin",
+    "store_operator",
+    "branch_manager",
+    "cashier",
+    "kitchen",
+    "rider",
+]
+
+
 def _get_bearer_token() -> str | None:
     auth_header = request.headers.get("Authorization", "").strip()
     if not auth_header.lower().startswith("bearer "):
@@ -45,6 +58,43 @@ def _decode_token(token: str) -> dict[str, Any]:
     )
 
 
+def _resolve_membership_context(user_id: str | None) -> dict[str, Any]:
+    if not user_id:
+        return {}
+
+    try:
+        from .extensions import supabase_admin
+
+        if not supabase_admin:
+            return {}
+
+        res = (
+            supabase_admin
+            .table("user_memberships")
+            .select("role,tenant_id,store_id,branch_id,is_active")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return {}
+
+        rows = sorted(
+            rows,
+            key=lambda row: ROLE_PRIORITY.index(row.get("role")) if row.get("role") in ROLE_PRIORITY else 999,
+        )
+        top = rows[0]
+        return {
+            "app_role": str(top.get("role") or "").strip() or "anonymous",
+            "tenant_id": str(top.get("tenant_id") or "").strip() or None,
+            "store_id": str(top.get("store_id") or "").strip() or None,
+            "branch_id": str(top.get("branch_id") or "").strip() or None,
+        }
+    except Exception:
+        return {}
+
+
 def build_auth_context() -> AuthContext:
     token = _get_bearer_token()
     claims: dict[str, Any] = {}
@@ -57,16 +107,28 @@ def build_auth_context() -> AuthContext:
 
     allow_local = current_app.config.get("ALLOW_INSECURE_LOCAL_AUTH", False)
 
+    debug_user_id = request.headers.get("X-User-Id") if allow_local else ""
+    debug_role = request.headers.get("X-App-Role") if allow_local else ""
+    debug_tenant_id = request.headers.get("X-Tenant-Id") if allow_local else ""
+    debug_store_id = request.headers.get("X-Store-Id") if allow_local else ""
+    debug_branch_id = request.headers.get("X-Branch-Id") if allow_local else ""
+
+    user_id = str(claims.get("sub") or debug_user_id or "").strip() or None
+    membership = _resolve_membership_context(user_id)
+
+    app_role = str(
+        claims.get("app_role")
+        or claims.get("user_role")
+        or membership.get("app_role")
+        or debug_role
+        or ("super_admin" if allow_local and request.headers.get("X-Debug-Super-Admin") == "1" else "anonymous")
+    ).strip()
+
     return AuthContext(
-        user_id=str(claims.get("sub") or request.headers.get("X-User-Id") or "").strip() or None,
-        app_role=str(
-            claims.get("app_role")
-            or claims.get("user_role")
-            or request.headers.get("X-App-Role")
-            or ("super_admin" if allow_local and request.headers.get("X-Debug-Super-Admin") == "1" else "anonymous")
-        ).strip(),
-        tenant_id=str(claims.get("tenant_id") or request.headers.get("X-Tenant-Id") or "").strip() or None,
-        store_id=str(claims.get("store_id") or request.headers.get("X-Store-Id") or "").strip() or None,
-        branch_id=str(claims.get("branch_id") or request.headers.get("X-Branch-Id") or "").strip() or None,
+        user_id=user_id,
+        app_role=app_role,
+        tenant_id=str(claims.get("tenant_id") or membership.get("tenant_id") or debug_tenant_id or "").strip() or None,
+        store_id=str(claims.get("store_id") or membership.get("store_id") or debug_store_id or "").strip() or None,
+        branch_id=str(claims.get("branch_id") or membership.get("branch_id") or debug_branch_id or "").strip() or None,
         claims=claims,
     )
