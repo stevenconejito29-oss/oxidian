@@ -30,7 +30,7 @@ import LegacySuperPage   from '../../legacy/pages/OxidianPage'
 import PublicMenuPage from '../../modules/public-menu/pages/PublicMenuPage'
 
 function AuthRoot() {
-  return <AuthProvider><Outlet /></AuthProvider>
+  return <AuthProvider><PlanProvider><Outlet /></PlanProvider></AuthProvider>
 }
 
 // ── Pantalla de error de sesión ───────────────────────────────────

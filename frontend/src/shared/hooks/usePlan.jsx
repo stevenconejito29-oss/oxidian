@@ -4,10 +4,10 @@
  */
 import React from 'react'
 import { useAuth } from '../../core/providers/AuthProvider'
-import { supabaseAuth } from './supabase/client'
+import { supabaseAuth } from '../supabase/client'
 import {
   getPlan, planHasFeature, planLimit, FEATURES, minPlanForFeature,
-} from './planFeatures'
+} from '../lib/planFeatures'
 
 const PlanContext = React.createContext(null)
 
