@@ -1,511 +1,342 @@
 import React from 'react'
 import {
-  buildStoreDraft,
-  cloneStoreCatalogSafe,
-  loadStoreCatalog,
-  saveStoreBundle,
-} from '../../../legacy/lib/storeManagement'
-import { BUSINESS_TYPES } from '../../../legacy/lib/storeConfig'
-import {
-  listTenants, createTenant, updateTenant,
-  listOwnerAccounts, createOwnerAccount, updateOwnerAccount,
-  getSuperAdminStats, listLandingRequests, updateLandingRequest,
-  inviteLandingRequest, listStores, getChatbotDownloadUrl,
+  listTenants,
+  createOwnerAccount, updateOwnerAccount, listOwnerAccounts,
+  listStores, createStore,
+  inviteLandingRequest,
+  getSuperAdminStats,
 } from '../../../shared/lib/supabaseApi'
 import { supabaseAuth } from '../../../shared/supabase/client'
 import {
-  Actions,
-  BadgeRow,
-  Button,
-  Field,
-  Form,
-  FormGrid,
-  GhostButton,
-  Grid,
-  Hero,
-  Notice,
-  Panel,
-  QuickLinks,
-  Shell,
-  Stats,
+  Actions, BadgeRow, Button, Field, Form, FormGrid,
+  GhostButton, Grid, Hero, Notice, Panel, Shell, Stats,
   controlDeckStyles,
 } from '../../../shared/ui/ControlDeck'
 import ChatbotAuthManager from '../components/ChatbotAuthManager'
 
+// ─── Constantes ───────────────────────────────────────────────────────
 const ADMIN_TABS = [
-  { id: 'overview',  label: 'Vision Global' },
-  { id: 'pipeline',  label: 'Solicitudes' },
-  { id: 'tenants',   label: 'Tenants' },
-  { id: 'owners',    label: 'Duenos' },
-  { id: 'stores',    label: 'Tiendas' },
-  { id: 'chatbot',   label: 'Chatbot' },
+  { id: 'overview', label: 'Visión Global' },
+  { id: 'pipeline', label: 'Solicitudes' },
+  { id: 'tenants',  label: 'Tenants' },
+  { id: 'owners',   label: 'Dueños' },
+  { id: 'stores',   label: 'Tiendas' },
+  { id: 'chatbot',  label: 'Chatbot' },
 ]
 
-const INITIAL_FORM = {
-  name: '',
-  slug: '',
-  owner_name: '',
-  owner_email: '',
-  city: '',
-  business_type: 'food',
-  plan_id: 'growth',
-  source_store_id: 'default',
-  notes: '',
-}
+const PLANS = [
+  { id: 'trial',      name: 'Trial' },
+  { id: 'starter',    name: 'Starter' },
+  { id: 'growth',     name: 'Growth' },
+  { id: 'pro',        name: 'Pro' },
+  { id: 'enterprise', name: 'Enterprise' },
+]
 
-const INITIAL_OWNER_FORM = {
-  tenant_id: '',
-  role: 'tenant_owner',
-  full_name: '',
-  email: '',
-  password: '',
-}
+const NICHES = [
+  { id: 'restaurant',       label: 'Restaurante',    template: 'delivery'  },
+  { id: 'supermarket',      label: 'Supermercado',   template: 'vitrina'   },
+  { id: 'boutique_fashion', label: 'Moda / Boutique',template: 'portfolio' },
+  { id: 'pharmacy',         label: 'Farmacia',       template: 'minimal'   },
+  { id: 'neighborhood_store',label:'Tienda Barrio',  template: 'minimal'   },
+  { id: 'barbershop',       label: 'Barbería',       template: 'booking'   },
+  { id: 'beauty_salon',     label: 'Salón Belleza',  template: 'booking'   },
+  { id: 'services',         label: 'Servicios',      template: 'booking'   },
+  { id: 'universal',        label: 'Otro',           template: 'delivery'  },
+]
 
-function buildStatusCount(stores = []) {
-  return stores.reduce((acc, item) => {
-    const status = item?.store?.status || 'draft'
-    acc[status] = (acc[status] || 0) + 1
-    return acc
-  }, {})
+const INITIAL_OWNER_FORM = { tenant_id:'', role:'tenant_owner', full_name:'', email:'', password:'' }
+const INITIAL_STORE_FORM  = { name:'', slug:'', niche:'restaurant', template_id:'delivery', city:'', tenant_id:'' }
+
+function slugify(v) {
+  return String(v||'').toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-{2,}/g,'-').replace(/^-|-$/g,'')
 }
 
 function TabBar({ active, onChange }) {
   return (
-    <div style={{
-      display: 'flex', gap: 6, flexWrap: 'wrap',
-      marginBottom: 20, padding: '4px 0',
-      borderBottom: '1px solid var(--color-border-tertiary)',
-    }}>
-      {ADMIN_TABS.map(tab => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          style={{
-            padding: '6px 16px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-            border: active === tab.id ? 'none' : '1px solid var(--color-border-secondary)',
-            background: active === tab.id ? 'var(--color-text-primary)' : 'transparent',
-            color: active === tab.id ? 'var(--color-background-primary)' : 'var(--color-text-secondary)',
-            fontFamily: 'inherit', transition: '.15s',
-          }}
-        >{tab.label}</button>
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:20, padding:'4px 0', borderBottom:'1px solid var(--color-border-tertiary)' }}>
+      {ADMIN_TABS.map(t => (
+        <button key={t.id} type="button" onClick={() => onChange(t.id)} style={{
+          padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'.15s',
+          border: active===t.id ? 'none' : '1px solid var(--color-border-secondary)',
+          background: active===t.id ? 'var(--color-text-primary)' : 'transparent',
+          color: active===t.id ? 'var(--color-background-primary)' : 'var(--color-text-secondary)',
+        }}>{t.label}</button>
       ))}
     </div>
   )
 }
 
+// ─── Componente principal ─────────────────────────────────────────────
 export default function SuperAdminPage() {
-  const [catalog, setCatalog] = React.useState({ stores: [], plans: [], missingSchema: false })
-  const [tenants, setTenants] = React.useState([])
-  const [ownerAccounts, setOwnerAccounts] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [ownersLoading, setOwnersLoading] = React.useState(true)
-  const [error, setError] = React.useState('')
-  const [ownerError, setOwnerError] = React.useState('')
-  const [form, setForm] = React.useState(INITIAL_FORM)
-  const [ownerForm, setOwnerForm] = React.useState(INITIAL_OWNER_FORM)
-  const [saving, setSaving] = React.useState(false)
-  const [ownerSaving, setOwnerSaving] = React.useState(false)
-  const [result, setResult] = React.useState(null)
-  const [ownerResult, setOwnerResult] = React.useState(null)
-  const [activeTab, setActiveTab] = React.useState('owners')
+  const [activeTab,      setActiveTab]      = React.useState('owners')
+  const [tenants,        setTenants]        = React.useState([])
+  const [ownerAccounts,  setOwnerAccounts]  = React.useState([])
+  const [stores,         setStores]         = React.useState([])
+  const [ownersLoading,  setOwnersLoading]  = React.useState(true)
+  const [storesLoading,  setStoresLoading]  = React.useState(false)
+  const [ownerError,     setOwnerError]     = React.useState('')
+  const [storeError,     setStoreError]     = React.useState('')
+  const [ownerResult,    setOwnerResult]    = React.useState(null)
+  const [storeResult,    setStoreResult]    = React.useState(null)
+  const [ownerForm,      setOwnerForm]      = React.useState(INITIAL_OWNER_FORM)
+  const [storeForm,      setStoreForm]      = React.useState(INITIAL_STORE_FORM)
+  const [ownerSaving,    setOwnerSaving]    = React.useState(false)
+  const [storeSaving,    setStoreSaving]    = React.useState(false)
 
-  const refreshCatalog = React.useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const next = await loadStoreCatalog()
-      setCatalog(next)
-    } catch (nextError) {
-      setError(nextError?.message || 'No se pudo cargar el catalogo de tiendas.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    refreshCatalog()
-  }, [refreshCatalog])
-
+  // ── Cargar tenants y dueños ──────────────────────────────────────
   const refreshOwners = React.useCallback(async () => {
-    setOwnersLoading(true)
-    setOwnerError('')
+    setOwnersLoading(true); setOwnerError('')
     try {
-      const [nextTenants, nextOwners] = await Promise.all([
-        listTenants(),
-        listOwnerAccounts(),
-      ])
-      setTenants(Array.isArray(nextTenants) ? nextTenants : [])
-      setOwnerAccounts(Array.isArray(nextOwners) ? nextOwners : [])
-      setOwnerForm(current => ({
-        ...current,
-        tenant_id: current.tenant_id || nextTenants?.[0]?.id || '',
-      }))
-    } catch (nextError) {
-      setOwnerError(nextError?.message || 'No se pudieron cargar las cuentas de dueños.')
-    } finally {
-      setOwnersLoading(false)
-    }
+      const [nextTenants, nextOwners] = await Promise.all([listTenants(), listOwnerAccounts()])
+      const ts = Array.isArray(nextTenants) ? nextTenants : []
+      const os = Array.isArray(nextOwners)  ? nextOwners  : []
+      setTenants(ts)
+      setOwnerAccounts(os)
+      setOwnerForm(f => ({ ...f, tenant_id: f.tenant_id || ts[0]?.id || '' }))
+      setStoreForm(f => ({ ...f, tenant_id: f.tenant_id || ts[0]?.id || '' }))
+    } catch (e) { setOwnerError(e.message || 'Error cargando cuentas') }
+    finally { setOwnersLoading(false) }
   }, [])
 
-  React.useEffect(() => {
-    refreshOwners()
-  }, [refreshOwners])
-
-  const statusCount = buildStatusCount(catalog.stores)
-  const plans = catalog.plans.length > 0 ? catalog.plans : [{ id: 'growth', name: 'Growth' }]
-
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setSaving(true)
-    setError('')
-    setResult(null)
+  const refreshStores = React.useCallback(async () => {
+    setStoresLoading(true)
     try {
-      const bundle = buildStoreDraft({
-        ...form,
-        code: form.slug || form.name,
-        portable_folder_name: `store-${form.slug || form.name}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
-      })
-      const saved = await saveStoreBundle(bundle)
-      let cloneResult = null
-      if (form.source_store_id && form.source_store_id !== saved.store.id) {
-        cloneResult = await cloneStoreCatalogSafe(form.source_store_id, saved.store.id)
-      }
-      setResult({ storeId: saved.store.id, cloneResult, sourceStoreId: form.source_store_id })
-      setForm(INITIAL_FORM)
-      await refreshCatalog()
-    } catch (nextError) {
-      setError(nextError?.message || 'No se pudo crear la tienda.')
-    } finally {
-      setSaving(false)
-    }
+      const data = await listStores()
+      setStores(Array.isArray(data) ? data : [])
+    } catch (e) { setStoreError(e.message) }
+    finally { setStoresLoading(false) }
+  }, [])
+
+  React.useEffect(() => { refreshOwners() }, [refreshOwners])
+  React.useEffect(() => { if (activeTab === 'stores') refreshStores() }, [activeTab, refreshStores])
+
+  // ── Crear cuenta de dueño ────────────────────────────────────────
+  async function handleOwnerSubmit(e) {
+    e.preventDefault()
+    setOwnerSaving(true); setOwnerError(''); setOwnerResult(null)
+    try {
+      const result = await createOwnerAccount(ownerForm)
+      setOwnerResult(result)
+      setOwnerForm(f => ({ ...INITIAL_OWNER_FORM, tenant_id: f.tenant_id }))
+      await refreshOwners()
+    } catch (e) { setOwnerError(e.message) }
+    finally { setOwnerSaving(false) }
   }
 
-  async function handleOwnerSubmit(event) {
-    event.preventDefault()
-    setOwnerSaving(true)
+  async function handleOwnerStatus(account, isActive) {
     setOwnerError('')
-    setOwnerResult(null)
-    try {
-      const created = await createOwnerAccount(ownerForm)
-      setOwnerResult(created)
-      setOwnerForm(current => ({
-        ...INITIAL_OWNER_FORM,
-        tenant_id: current.tenant_id || ownerForm.tenant_id,
-      }))
-      await refreshOwners()
-    } catch (nextError) {
-      setOwnerError(nextError?.message || 'No se pudo crear la cuenta del dueño.')
-    } finally {
-      setOwnerSaving(false)
-    }
-  }
-
-  async function handleOwnerStatusChange(account, isActive) {
-    setOwnerError('')
-    try {
-      await updateOwnerAccount(account.membership_id, { is_active: isActive })
-      await refreshOwners()
-    } catch (nextError) {
-      setOwnerError(nextError?.message || 'No se pudo actualizar la cuenta.')
-    }
+    try { await updateOwnerAccount(account.membership_id, { is_active: isActive }); await refreshOwners() }
+    catch (e) { setOwnerError(e.message) }
   }
 
   async function handleOwnerPasswordReset(account) {
-    const nextPassword = window.prompt(`Nueva password para ${account.email}`, '')
-    if (!nextPassword) return
-    setOwnerError('')
-    try {
-      await updateOwnerAccount(account.membership_id, { password: nextPassword })
-      setOwnerResult({ email: account.email, passwordReset: true })
-      await refreshOwners()
-    } catch (nextError) {
-      setOwnerError(nextError?.message || 'No se pudo actualizar la password.')
+    const pw = window.prompt(`Nueva password para ${account.email}`, '')
+    if (!pw) return
+    try { await updateOwnerAccount(account.membership_id, { password: pw }); await refreshOwners() }
+    catch (e) { setOwnerError(e.message) }
+  }
+
+  // ── Crear tienda directa ─────────────────────────────────────────
+  async function handleStoreSubmit(e) {
+    e.preventDefault()
+    if (!storeForm.name || !storeForm.slug || !storeForm.tenant_id) {
+      setStoreError('Nombre, slug y tenant son requeridos'); return
     }
+    setStoreSaving(true); setStoreError(''); setStoreResult(null)
+    try {
+      const niche = NICHES.find(n => n.id === storeForm.niche) || NICHES[0]
+      const store = await createStore({
+        id:           storeForm.slug,
+        slug:         storeForm.slug,
+        name:         storeForm.name,
+        tenant_id:    storeForm.tenant_id,
+        niche:        storeForm.niche,
+        business_type: niche.template,
+        template_id:  storeForm.template_id || niche.template,
+        city:         storeForm.city,
+        status:       'active',
+        public_visible: true,
+        theme_tokens: {},
+      })
+      setStoreResult(store)
+      setStoreForm(f => ({ ...INITIAL_STORE_FORM, tenant_id: f.tenant_id }))
+      await refreshStores()
+    } catch (e) { setStoreError(e.message) }
+    finally { setStoreSaving(false) }
   }
 
   return (
     <Shell>
       <Hero
         eyebrow="Super Admin · Oxidian"
-        title="Controla tenants, marcas, sedes y chatbots."
-        description="Crea tiendas, clona catálogos, autoriza chatbots portables y gestiona toda la red comercial desde un solo panel."
+        title="Controla tenants, tiendas, sedes y chatbots."
+        description="Gestiona toda la red comercial desde un solo panel. Los tenants se crean aquí, el dueño gestiona su tienda desde su panel."
         signals={[
-          { label: 'Tiendas', value: String(catalog.stores.length) },
-          { label: 'Activas', value: String(statusCount.active || 0) },
+          { label: 'Tenants', value: String(tenants.length) },
+          { label: 'Tiendas', value: String(stores.length) },
         ]}
       />
 
-      {/* Stats rápidos */}
-      <Stats items={[
-        { label: 'Total tiendas', value: String(catalog.stores.length), hint: 'Marcas en el sistema.' },
-        { label: 'Activas', value: String(statusCount.active || 0), hint: 'Listas para vender.' },
-        { label: 'Borrador', value: String(statusCount.draft || 0), hint: 'En preparación.' },
-        { label: 'Planes', value: String(plans.length), hint: 'Paquetes disponibles.' },
-      ]} />
-
-      {catalog.missingSchema && (
-        <Notice tone="error">Schema de Supabase incompleto. Aplica las migraciones antes de crear tiendas.</Notice>
-      )}
-      {error && <Notice tone="error">{error}</Notice>}
-      {result && (
-        <Notice tone="success">
-          Tienda creada: <strong>{result.storeId}</strong>.{' '}
-          {result.cloneResult?.success
-            ? `Catálogo clonado desde ${result.sourceStoreId || 'default'}.`
-            : result.cloneResult?.reason || 'Sin clonación adicional.'}
-        </Notice>
-      )}
-
-      {/* Tabs de navegación */}
       <TabBar active={activeTab} onChange={setActiveTab} />
 
-      {/* ── Tab: Vision Global ────────────────────────────────── */}
-      {activeTab === 'overview' && (
-        <OverviewTab storeCount={catalog.stores.length} statusCount={statusCount} planCount={plans.length} />
-      )}
+      {/* ── VISION GLOBAL ───────────────────────────────────────── */}
+      {activeTab === 'overview' && <OverviewTab />}
 
-      {/* ── Tab: Solicitudes (Pipeline) ───────────────────────── */}
+      {/* ── PIPELINE ────────────────────────────────────────────── */}
       {activeTab === 'pipeline' && <PipelineTab />}
 
-      {/* ── Tab: Tenants ──────────────────────────────────────── */}
-      {activeTab === 'tenants' && <TenantsTab plans={plans} />}
+      {/* ── TENANTS ─────────────────────────────────────────────── */}
+      {activeTab === 'tenants' && <TenantsTab />}
 
-      {/* ── Tab: Tiendas ──────────────────────────────────────── */}
-      {activeTab === 'stores' && (
-        <Grid>
-          <Panel title="Crear tienda clonada" text="Crea una nueva marca y clona su catálogo desde una tienda origen.">
-            <Form onSubmit={handleSubmit}>
-              <FormGrid>
-                <Field label="Nombre de negocio">
-                  <input className={controlDeckStyles.input} value={form.name}
-                    onChange={e => setForm(c => ({ ...c, name: e.target.value }))}
-                    placeholder="Boutique Aurora" required />
-                </Field>
-                <Field label="Slug / código">
-                  <input className={controlDeckStyles.input} value={form.slug}
-                    onChange={e => setForm(c => ({ ...c, slug: e.target.value }))}
-                    placeholder="boutique-aurora" required />
-                </Field>
-                <Field label="Dueño">
-                  <input className={controlDeckStyles.input} value={form.owner_name}
-                    onChange={e => setForm(c => ({ ...c, owner_name: e.target.value }))}
-                    placeholder="Nombre del tenant" />
-                </Field>
-                <Field label="Email del dueño">
-                  <input className={controlDeckStyles.input} value={form.owner_email}
-                    onChange={e => setForm(c => ({ ...c, owner_email: e.target.value }))}
-                    placeholder="owner@negocio.com" />
-                </Field>
-                <Field label="Ciudad">
-                  <input className={controlDeckStyles.input} value={form.city}
-                    onChange={e => setForm(c => ({ ...c, city: e.target.value }))}
-                    placeholder="Madrid" />
-                </Field>
-                <Field label="Tipo de negocio">
-                  <select className={controlDeckStyles.select} value={form.business_type}
-                    onChange={e => setForm(c => ({ ...c, business_type: e.target.value }))}>
-                    {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-                <Field label="Plan">
-                  <select className={controlDeckStyles.select} value={form.plan_id}
-                    onChange={e => setForm(c => ({ ...c, plan_id: e.target.value }))}>
-                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Clonar desde">
-                  <select className={controlDeckStyles.select} value={form.source_store_id}
-                    onChange={e => setForm(c => ({ ...c, source_store_id: e.target.value }))}>
-                    <option value="default">default</option>
-                    {catalog.stores.map(item => (
-                      <option key={item.store.id} value={item.store.id}>
-                        {item.store.name} ({item.store.id})
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </FormGrid>
-              <Field label="Notas internas">
-                <textarea className={controlDeckStyles.textarea} value={form.notes}
-                  onChange={e => setForm(c => ({ ...c, notes: e.target.value }))}
-                  placeholder="Observaciones para onboarding, branding o sede inicial." />
-              </Field>
-              <Actions>
-                <Button disabled={saving} type="submit">
-                  {saving ? 'Creando tienda...' : 'Crear y clonar'}
-                </Button>
-                <GhostButton type="button" onClick={() => setForm(INITIAL_FORM)}>Limpiar</GhostButton>
-              </Actions>
-            </Form>
-          </Panel>
-
-          <Panel title="Catálogo actual" text="Inventario administrativo de marcas." dark>
-            {loading ? <Notice>Cargando catálogo...</Notice> : null}
-            {!loading && (
-              <div className={controlDeckStyles.list}>
-                {catalog.stores.slice(0, 8).map(item => (
-                  <article className={controlDeckStyles.listCard} key={item.store.id}>
-                    <div className={controlDeckStyles.listTop}>
-                      <div>
-                        <h3 className={controlDeckStyles.listTitle}>{item.store.name}</h3>
-                        <p className={controlDeckStyles.listMeta}>
-                          {item.store.id} · {item.store.city || 'Sin ciudad'} · {item.store.owner_email || 'Sin email'}
-                        </p>
-                      </div>
-                      <span className={controlDeckStyles.badge}>{item.store.status}</span>
-                    </div>
-                    <BadgeRow items={[
-                      item.plan?.name || item.store.plan_id || 'Plan base',
-                      item.process?.catalog_mode || 'food',
-                      item.process?.order_flow_type || 'standard',
-                      item.runtime?.chatbot_url ? 'chatbot runtime' : 'sin chatbot',
-                    ]} />
-                    <Actions>
-                      <GhostButton type="button"
-                        onClick={() => window.open(`/tenant/admin?store=${encodeURIComponent(item.store.id)}`, '_self')}>
-                        Abrir tenant
-                      </GhostButton>
-                      <GhostButton type="button"
-                        onClick={() => window.open(`/storefront/menu?store=${encodeURIComponent(item.store.id)}`, '_self')}>
-                        Ver menú
-                      </GhostButton>
-                    </Actions>
-                  </article>
-                ))}
-                {!catalog.stores.length && (
-                  <Notice>Sin tiendas todavía. Crea la primera desde el formulario.</Notice>
-                )}
-              </div>
-            )}
-          </Panel>
-        </Grid>
-      )}
-
-      {/* ── Tab: Chatbot Auth ─────────────────────────────────── */}
+      {/* ── DUEÑOS ──────────────────────────────────────────────── */}
       {activeTab === 'owners' && (
         <Grid>
-          <Panel title="Crear cuentas de dueños" text="El super admin gestiona tenant owner y tenant admin sin tocar SQL manual.">
-            {ownerError && <Notice tone="error">{ownerError}</Notice>}
-            {ownerResult && (
-              <Notice tone="success">
-                Cuenta lista para <strong>{ownerResult.email}</strong>.
-              </Notice>
-            )}
+          <Panel title="Crear cuenta de dueño" text="Crea el acceso para un tenant_owner o tenant_admin.">
+            {ownerError  && <Notice tone="error">{ownerError}</Notice>}
+            {ownerResult && <Notice tone="success">Cuenta lista para <strong>{ownerResult.email || ownerResult.user_id}</strong>.</Notice>}
             <Form onSubmit={handleOwnerSubmit}>
               <FormGrid>
-                <Field label="Tenant">
-                  <select
-                    className={controlDeckStyles.select}
+                <Field label="Tenant *">
+                  <select className={controlDeckStyles.select} required
                     value={ownerForm.tenant_id}
-                    onChange={e => setOwnerForm(current => ({ ...current, tenant_id: e.target.value }))}
-                    required
-                  >
-                    <option value="">Selecciona un tenant</option>
-                    {tenants.map(tenant => (
-                      <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
-                    ))}
+                    onChange={e => setOwnerForm(f => ({ ...f, tenant_id: e.target.value }))}>
+                    <option value="">Selecciona tenant</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </Field>
                 <Field label="Rol">
-                  <select
-                    className={controlDeckStyles.select}
-                    value={ownerForm.role}
-                    onChange={e => setOwnerForm(current => ({ ...current, role: e.target.value }))}
-                  >
+                  <select className={controlDeckStyles.select} value={ownerForm.role}
+                    onChange={e => setOwnerForm(f => ({ ...f, role: e.target.value }))}>
                     <option value="tenant_owner">tenant_owner</option>
                     <option value="tenant_admin">tenant_admin</option>
                   </select>
                 </Field>
                 <Field label="Nombre completo">
-                  <input
-                    className={controlDeckStyles.input}
-                    value={ownerForm.full_name}
-                    onChange={e => setOwnerForm(current => ({ ...current, full_name: e.target.value }))}
-                    placeholder="Maria Perez"
-                  />
+                  <input className={controlDeckStyles.input} value={ownerForm.full_name}
+                    onChange={e => setOwnerForm(f => ({ ...f, full_name: e.target.value }))}
+                    placeholder="María García" />
                 </Field>
-                <Field label="Email">
-                  <input
-                    className={controlDeckStyles.input}
-                    type="email"
+                <Field label="Email *">
+                  <input className={controlDeckStyles.input} type="email" required
                     value={ownerForm.email}
-                    onChange={e => setOwnerForm(current => ({ ...current, email: e.target.value }))}
-                    placeholder="dueno@marca.com"
-                    required
-                  />
+                    onChange={e => setOwnerForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="dueno@negocio.com" />
                 </Field>
-                <Field label="Password inicial">
-                  <input
-                    className={controlDeckStyles.input}
-                    type="text"
+                <Field label="Password *">
+                  <input className={controlDeckStyles.input} type="text" required
                     value={ownerForm.password}
-                    onChange={e => setOwnerForm(current => ({ ...current, password: e.target.value }))}
-                    placeholder="Minimo 8 caracteres"
-                    required
-                  />
+                    onChange={e => setOwnerForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="Mínimo 8 caracteres" />
                 </Field>
               </FormGrid>
               <Actions>
-                <Button disabled={ownerSaving} type="submit">
-                  {ownerSaving ? 'Guardando cuenta...' : 'Crear cuenta'}
-                </Button>
-                <GhostButton
-                  type="button"
-                  onClick={() => setOwnerForm(current => ({
-                    ...INITIAL_OWNER_FORM,
-                    tenant_id: current.tenant_id,
-                  }))}
-                >
-                  Limpiar
-                </GhostButton>
+                <Button type="submit" disabled={ownerSaving}>{ownerSaving ? 'Creando…' : 'Crear cuenta'}</Button>
+                <GhostButton type="button" onClick={() => setOwnerForm(f => ({ ...INITIAL_OWNER_FORM, tenant_id: f.tenant_id }))}>Limpiar</GhostButton>
               </Actions>
             </Form>
           </Panel>
 
-          <Panel title="Dueños y admins de tenant" text="Control de acceso para las cuentas que gobiernan cada negocio." dark>
-            {ownersLoading ? <Notice>Cargando cuentas...</Notice> : null}
-            {!ownersLoading && ownerAccounts.length === 0 ? (
-              <Notice>No hay cuentas registradas todavia.</Notice>
-            ) : null}
-            {!ownersLoading && ownerAccounts.length > 0 ? (
-              <div className={controlDeckStyles.list}>
-                {ownerAccounts.map(account => (
-                  <article className={controlDeckStyles.listCard} key={account.membership_id}>
-                    <div className={controlDeckStyles.listTop}>
-                      <div>
-                        <h3 className={controlDeckStyles.listTitle}>{account.full_name || account.email}</h3>
-                        <p className={controlDeckStyles.listMeta}>
-                          {account.email} · {account.tenant_name || 'Tenant sin nombre'}
-                        </p>
-                      </div>
-                      <span className={controlDeckStyles.badge}>
-                        {account.is_active ? 'activo' : 'pausado'}
-                      </span>
-                    </div>
-                    <BadgeRow items={[
-                      account.role,
-                      account.last_sign_in_at ? 'ya entro' : 'sin login',
-                    ]} />
-                    <Actions>
-                      <GhostButton type="button" onClick={() => handleOwnerStatusChange(account, !account.is_active)}>
-                        {account.is_active ? 'Pausar acceso' : 'Reactivar acceso'}
-                      </GhostButton>
-                      <GhostButton type="button" onClick={() => handleOwnerPasswordReset(account)}>
-                        Resetear password
-                      </GhostButton>
-                    </Actions>
-                  </article>
-                ))}
-              </div>
-            ) : null}
+          <Panel title={`Dueños (${ownerAccounts.length})`} text="Cuentas con acceso a paneles de tenant." dark>
+            {ownersLoading && <Notice>Cargando…</Notice>}
+            {!ownersLoading && !ownerAccounts.length && <Notice>Sin cuentas creadas todavía.</Notice>}
+            {ownerAccounts.map(a => (
+              <article className={controlDeckStyles.listCard} key={a.membership_id || a.id}>
+                <div className={controlDeckStyles.listTop}>
+                  <div>
+                    <h3 className={controlDeckStyles.listTitle}>{a.full_name || a.email || a.user_id}</h3>
+                    <p className={controlDeckStyles.listMeta}>{a.email} · {a.tenant_name || 'Sin tenant'}</p>
+                  </div>
+                  <span className={controlDeckStyles.badge}>{a.is_active ? 'activo' : 'pausado'}</span>
+                </div>
+                <BadgeRow items={[a.role, a.last_sign_in_at ? 'con acceso' : 'sin login']} />
+                <Actions>
+                  <GhostButton type="button" onClick={() => handleOwnerStatus(a, !a.is_active)}>
+                    {a.is_active ? 'Pausar' : 'Reactivar'}
+                  </GhostButton>
+                  <GhostButton type="button" onClick={() => handleOwnerPasswordReset(a)}>
+                    Reset password
+                  </GhostButton>
+                </Actions>
+              </article>
+            ))}
           </Panel>
         </Grid>
       )}
 
+      {/* ── TIENDAS ──────────────────────────────────────────────── */}
+      {activeTab === 'stores' && (
+        <Grid>
+          <Panel title="Crear tienda" text="Crea una tienda y asígnala a un tenant.">
+            {storeError  && <Notice tone="error">{storeError}</Notice>}
+            {storeResult && <Notice tone="success">Tienda <strong>{storeResult.name}</strong> creada. El dueño puede personalizarla desde su panel.</Notice>}
+            <Form onSubmit={handleStoreSubmit}>
+              <FormGrid>
+                <Field label="Tenant *">
+                  <select className={controlDeckStyles.select} required
+                    value={storeForm.tenant_id}
+                    onChange={e => setStoreForm(f => ({ ...f, tenant_id: e.target.value }))}>
+                    <option value="">Selecciona tenant</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Nombre *">
+                  <input className={controlDeckStyles.input} required value={storeForm.name}
+                    onChange={e => setStoreForm(f => ({ ...f, name: e.target.value, slug: f.slug || slugify(e.target.value) }))}
+                    placeholder="Pizza Roma" />
+                </Field>
+                <Field label="Slug *">
+                  <input className={controlDeckStyles.input} required value={storeForm.slug}
+                    onChange={e => setStoreForm(f => ({ ...f, slug: slugify(e.target.value) }))}
+                    placeholder="pizza-roma" />
+                </Field>
+                <Field label="Nicho">
+                  <select className={controlDeckStyles.select} value={storeForm.niche}
+                    onChange={e => {
+                      const n = NICHES.find(x => x.id === e.target.value) || NICHES[0]
+                      setStoreForm(f => ({ ...f, niche: n.id, template_id: n.template }))
+                    }}>
+                    {NICHES.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Ciudad">
+                  <input className={controlDeckStyles.input} value={storeForm.city}
+                    onChange={e => setStoreForm(f => ({ ...f, city: e.target.value }))}
+                    placeholder="Madrid" />
+                </Field>
+              </FormGrid>
+              <Actions>
+                <Button type="submit" disabled={storeSaving}>{storeSaving ? 'Creando…' : 'Crear tienda'}</Button>
+                <GhostButton type="button" onClick={() => setStoreForm(f => ({ ...INITIAL_STORE_FORM, tenant_id: f.tenant_id }))}>Limpiar</GhostButton>
+              </Actions>
+            </Form>
+          </Panel>
+
+          <Panel title={`Tiendas (${stores.length})`} dark>
+            {storesLoading && <Notice>Cargando…</Notice>}
+            {!storesLoading && !stores.length && <Notice>Sin tiendas todavía.</Notice>}
+            {stores.map(s => (
+              <article className={controlDeckStyles.listCard} key={s.id}>
+                <div className={controlDeckStyles.listTop}>
+                  <div>
+                    <h3 className={controlDeckStyles.listTitle}>{s.name}</h3>
+                    <p className={controlDeckStyles.listMeta}>{s.slug} · {s.city || 'Sin ciudad'} · {s.niche || s.business_type}</p>
+                  </div>
+                  <span className={controlDeckStyles.badge}>{s.status}</span>
+                </div>
+                <BadgeRow items={[s.template_id || 'delivery', s.public_visible ? 'pública' : 'oculta']} />
+                <Actions>
+                  <GhostButton type="button" onClick={() => window.open(`/s/${s.slug}/menu`, '_blank')}>Ver menú</GhostButton>
+                  <GhostButton type="button" onClick={() => window.open(`/tenant/admin`, '_self')}>Panel tenant</GhostButton>
+                </Actions>
+              </article>
+            ))}
+          </Panel>
+        </Grid>
+      )}
+
+      {/* ── CHATBOT ──────────────────────────────────────────────── */}
       {activeTab === 'chatbot' && (
-        <Panel title="Autorización de chatbot portable"
-          text="Autoriza o revoca el acceso al chatbot portable por sede.">
+        <Panel title="Chatbot portable por sede" text="Autoriza sedes y descarga el ZIP del bot WhatsApp.">
           <ChatbotAuthManager />
         </Panel>
       )}
@@ -513,34 +344,36 @@ export default function SuperAdminPage() {
   )
 }
 
-// ═══════════════════════════════════════════════════════
-// TABS NUEVOS — OverviewTab, PipelineTab, TenantsTab
-// ═══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+// SUB-TABS
+// ══════════════════════════════════════════════════════════════════════
 
-function OverviewTab({ storeCount, statusCount, planCount }) {
-  const [metrics, setMetrics] = React.useState(null)
+function OverviewTab() {
+  const [stats, setStats] = React.useState(null)
 
   React.useEffect(() => {
     Promise.all([
-      supabaseAuth.from('tenants').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('branches').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('landing_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabaseAuth.from('orders').select('id', { count: 'exact', head: true })
-        .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
-    ]).then(([t, b, l, o]) => setMetrics({
-      tenants: t.count ?? 0, branches: b.count ?? 0,
-      leads: l.count ?? 0, orders24h: o.count ?? 0,
+      supabaseAuth.from('tenants').select('id', { count:'exact', head:true }),
+      supabaseAuth.from('stores').select('id', { count:'exact', head:true }),
+      supabaseAuth.from('branches').select('id', { count:'exact', head:true }),
+      supabaseAuth.from('user_memberships').select('id', { count:'exact', head:true }),
+      supabaseAuth.from('landing_requests').select('id', { count:'exact', head:true }).eq('status','pending'),
+      supabaseAuth.from('orders').select('id', { count:'exact', head:true })
+        .gte('created_at', new Date(Date.now()-86400000).toISOString()),
+    ]).then(([t, s, b, m, l, o]) => setStats({
+      tenants: t.count||0, stores: s.count||0, branches: b.count||0,
+      members: m.count||0, leads: l.count||0, orders24h: o.count||0,
     }))
   }, [])
 
   return (
     <Stats items={[
-      { label: 'Tenants',       value: String(metrics?.tenants ?? '…'),   hint: 'Dueños de negocio activos' },
-      { label: 'Tiendas',       value: String(storeCount),                hint: 'Stores en el sistema' },
-      { label: 'Sedes',         value: String(metrics?.branches ?? '…'),  hint: 'Puntos de operación' },
-      { label: 'Leads pendientes', value: String(metrics?.leads ?? '…'), hint: 'Del landing sin contactar' },
-      { label: 'Pedidos (24h)', value: String(metrics?.orders24h ?? '…'), hint: 'Órdenes en las últimas 24h' },
-      { label: 'Planes',        value: String(planCount),                 hint: 'Paquetes disponibles' },
+      { label:'Tenants',        value: String(stats?.tenants   ?? '…'), hint:'Negocios en la plataforma' },
+      { label:'Tiendas',        value: String(stats?.stores    ?? '…'), hint:'Marcas activas' },
+      { label:'Sedes',          value: String(stats?.branches  ?? '…'), hint:'Puntos físicos' },
+      { label:'Usuarios',       value: String(stats?.members   ?? '…'), hint:'Staff y dueños' },
+      { label:'Leads pendientes', value: String(stats?.leads ?? '…'),   hint:'Sin contactar' },
+      { label:'Pedidos (24h)',  value: String(stats?.orders24h ?? '…'), hint:'Últimas 24 horas' },
     ]} />
   )
 }
@@ -558,128 +391,110 @@ function PipelineTab() {
   const [saving,   setSaving]   = React.useState(null)
 
   React.useEffect(() => {
-    supabaseAuth.from('landing_requests').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => { setRequests(data ?? []); setLoading(false) })
+    supabaseAuth.from('landing_requests').select('*').order('created_at',{ascending:false})
+      .then(({ data }) => { setRequests(data??[]); setLoading(false) })
   }, [])
 
   async function advance(id, status) {
     setSaving(id)
     const patch = { status, updated_at: new Date().toISOString() }
-    if (status === 'contacted') patch.contacted_at = new Date().toISOString()
-    if (status === 'converted') patch.converted_at = new Date().toISOString()
+    if (status==='contacted') patch.contacted_at = new Date().toISOString()
+    if (status==='converted') patch.converted_at = new Date().toISOString()
     await supabaseAuth.from('landing_requests').update(patch).eq('id', id)
-    setRequests(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
+    setRequests(rs => rs.map(r => r.id===id ? {...r,...patch} : r))
     setSaving(null)
   }
 
   async function sendInvite(r) {
-    const ok = window.confirm(
-      `Aprobar y enviar enlace a ${r.email}?\n\n` +
-      `Recibiran un link magico para entrar directamente al wizard de configuracion de su tienda.`
-    )
-    if (!ok) return
+    if (!window.confirm(`Aprobar y enviar enlace a ${r.email}?`)) return
     setSaving(r.id)
     try {
       await inviteLandingRequest(r.id, `${window.location.origin}/onboarding`)
-      setRequests(rs => rs.map(item => (
-        item.id === r.id
-          ? { ...item, status: 'onboarding', updated_at: new Date().toISOString() }
-          : item
-      )))
-      window.alert(
-        `Enlace enviado a ${r.email}.\n` +
-        `El usuario hara clic y llegara al wizard para configurar su tienda.\n\n` +
-        `Si no llega el email, revisa SMTP y las plantillas de Auth en Supabase.`
-      )
+      setRequests(rs => rs.map(x => x.id===r.id ? {...x, status:'onboarding'} : x))
+      window.alert(`Enlace enviado a ${r.email}.`)
     } catch (e) { window.alert('Error: ' + e.message) }
     setSaving(null)
   }
 
-  const byStatus = requests.reduce((a, r) => { a[r.status] = (a[r.status]||0)+1; return a }, {})
-  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
+  const byStatus = requests.reduce((a,r) => { a[r.status]=(a[r.status]||0)+1; return a }, {})
+  const filtered = filter==='all' ? requests : requests.filter(r => r.status===filter)
 
-  if (loading) return <Notice>Cargando solicitudes...</Notice>
+  if (loading) return <Notice>Cargando solicitudes…</Notice>
 
   return (
     <div>
       <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
-        {['all', ...PIPELINE_STATES].map(s => (
-          <button key={s} type="button" onClick={() => setFilter(s)}
-            style={{ padding:'4px 12px', borderRadius:20, fontSize:12, cursor:'pointer', fontFamily:'inherit',
-              border: filter===s ? 'none' : '1px solid var(--color-border-secondary)',
-              background: filter===s ? (STATUS_COLOR[s]||'var(--color-text-primary)') : 'transparent',
-              color: filter===s ? '#fff' : 'var(--color-text-secondary)' }}>
-            {s==='all'?'Todos':s} {byStatus[s]?`(${byStatus[s]})`:''}</button>
+        {['all',...PIPELINE_STATES].map(s => (
+          <button key={s} type="button" onClick={() => setFilter(s)} style={{
+            padding:'4px 12px', borderRadius:20, fontSize:12, cursor:'pointer', fontFamily:'inherit',
+            border: filter===s?'none':'1px solid var(--color-border-secondary)',
+            background: filter===s?(STATUS_COLOR[s]||'var(--color-text-primary)'):'transparent',
+            color: filter===s?'#fff':'var(--color-text-secondary)',
+          }}>{s==='all'?'Todos':s}{byStatus[s]?` (${byStatus[s]})`:''}</button>
         ))}
       </div>
-      {filtered.length === 0
-        ? <Notice>Sin solicitudes en este estado</Notice>
-        : filtered.map(r => (
-          <div key={r.id} style={{ padding:'14px', marginBottom:8, borderRadius:10,
-            border:'1px solid var(--color-border-tertiary)',
-            background:'var(--color-background-primary)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
-              <div style={{ minWidth:0 }}>
-                <div style={{ fontWeight:500, fontSize:14 }}>{r.full_name}</div>
-                <div style={{ fontSize:12, color:'var(--color-text-secondary)', marginTop:2 }}>
-                  {r.email} · {r.phone} · {r.business_name} ({r.business_niche}) · {r.city}
-                </div>
-                {r.message && (
-                  <div style={{ fontSize:12, marginTop:6, padding:'6px 10px',
-                    background:'var(--color-background-secondary)', borderRadius:6, fontStyle:'italic' }}>
-                    "{r.message}"
-                  </div>
-                )}
+      {!filtered.length && <Notice>Sin solicitudes en este estado</Notice>}
+      {filtered.map(r => (
+        <div key={r.id} style={{ padding:'14px', marginBottom:8, borderRadius:10,
+          border:'1px solid var(--color-border-tertiary)', background:'var(--color-background-primary)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
+            <div>
+              <div style={{ fontWeight:500, fontSize:14 }}>{r.full_name}</div>
+              <div style={{ fontSize:12, color:'var(--color-text-secondary)', marginTop:2 }}>
+                {r.email} · {r.phone} · {r.business_name} · {r.city}
               </div>
-              <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:500, whiteSpace:'nowrap',
-                background:`${STATUS_COLOR[r.status]}20`, color:STATUS_COLOR[r.status] }}>{r.status}</span>
+              {r.message && <div style={{ fontSize:12, marginTop:6, padding:'6px 10px',
+                background:'var(--color-background-secondary)', borderRadius:6, fontStyle:'italic' }}>
+                "{r.message}"</div>}
             </div>
-            <div style={{ display:'flex', gap:6, marginTop:10, flexWrap:'wrap' }}>
-              {r.status === 'pending' && (
-                <button type="button" onClick={() => advance(r.id,'contacted')} disabled={saving===r.id}
-                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
-                    background:'var(--color-text-primary)', color:'var(--color-background-primary)', border:'none' }}>
-                  Contactar
-                </button>
-              )}
-              {(r.status === 'contacted' || r.status === 'demo_scheduled') && (
-                <button type="button" onClick={() => sendInvite(r)} disabled={saving===r.id}
-                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
-                    background:'#16a34a', color:'#fff', border:'none' }}>
-                  Aprobar y enviar invitación
-                </button>
-              )}
-              {!['converted','rejected'].includes(r.status) && (
-                <button type="button" onClick={() => advance(r.id,'rejected')} disabled={saving===r.id}
-                  style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
-                    background:'transparent', color:'#dc2626',
-                    border:'1px solid #dc2626' }}>
-                  Rechazar
-                </button>
-              )}
-            </div>
+            <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:500, whiteSpace:'nowrap',
+              background:`${STATUS_COLOR[r.status]}20`, color:STATUS_COLOR[r.status] }}>{r.status}</span>
           </div>
-        ))}
+          <div style={{ display:'flex', gap:6, marginTop:10, flexWrap:'wrap' }}>
+            {r.status==='pending' && (
+              <button type="button" onClick={() => advance(r.id,'contacted')} disabled={saving===r.id}
+                style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                  background:'var(--color-text-primary)', color:'var(--color-background-primary)', border:'none' }}>
+                Contactar
+              </button>
+            )}
+            {['contacted','demo_scheduled'].includes(r.status) && (
+              <button type="button" onClick={() => sendInvite(r)} disabled={saving===r.id}
+                style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                  background:'#16a34a', color:'#fff', border:'none' }}>
+                Aprobar y enviar invitación
+              </button>
+            )}
+            {!['converted','rejected'].includes(r.status) && (
+              <button type="button" onClick={() => advance(r.id,'rejected')} disabled={saving===r.id}
+                style={{ padding:'4px 12px', fontSize:11, borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                  background:'transparent', color:'#dc2626', border:'1px solid #dc2626' }}>
+                Rechazar
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-function TenantsTab({ plans }) {
+function TenantsTab() {
   const [tenants, setTenants] = React.useState([])
   const [loading, setLoading] = React.useState(true)
-  const [form, setForm] = React.useState({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', notes:'' })
-  const [plan, setPlan] = React.useState('growth')
-  const [saving, setSaving] = React.useState(false)
-  const [error, setError] = React.useState('')
+  const [form, setForm]       = React.useState({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', notes:'' })
+  const [plan, setPlan]       = React.useState('growth')
+  const [saving, setSaving]   = React.useState(false)
+  const [error, setError]     = React.useState('')
 
-  React.useEffect(() => {
-    supabaseAuth.from('tenants')
-      .select('*, tenant_subscriptions(plan_id,status), stores(count)')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => { setTenants(data ?? []); setLoading(false) })
-  }, [])
+  const reload = () => supabaseAuth.from('tenants')
+    .select('*, tenant_subscriptions(plan_id,status), stores(count)')
+    .order('created_at',{ascending:false})
+    .then(({ data }) => { setTenants(data??[]); setLoading(false) })
 
-  async function createTenant(e) {
+  React.useEffect(() => { reload() }, [])
+
+  async function handleCreate(e) {
     e.preventDefault(); setSaving(true); setError('')
     try {
       const { data: t, error: te } = await supabaseAuth.from('tenants').insert({
@@ -687,76 +502,78 @@ function TenantsTab({ plans }) {
       }).select().single()
       if (te) throw te
       await supabaseAuth.from('tenant_subscriptions').insert({
-        tenant_id: t.id, plan_id: plan, status:'active',
+        tenant_id:t.id, plan_id:plan, status:'active',
         current_period_end: new Date(Date.now()+30*86400000).toISOString(),
       })
       setForm({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', notes:'' })
-      setTenants(prev => [t, ...prev])
+      reload()
     } catch(e) { setError(e.message) }
     setSaving(false)
   }
 
   async function toggleStatus(t) {
-    const next = t.status === 'active' ? 'suspended' : 'active'
+    const next = t.status==='active' ? 'suspended' : 'active'
     await supabaseAuth.from('tenants').update({ status:next }).eq('id', t.id)
-    setTenants(prev => prev.map(x => x.id===t.id ? {...x, status:next} : x))
+    setTenants(prev => prev.map(x => x.id===t.id ? {...x,status:next} : x))
   }
-
-  const planLabel = id => plans.find(p => p.id===id)?.name ?? id
 
   return (
     <Grid>
       <Panel title="Nuevo Tenant">
         {error && <Notice tone="error">{error}</Notice>}
-        <Form onSubmit={createTenant}>
+        <Form onSubmit={handleCreate}>
           <FormGrid>
-            <Field label="Nombre *"><input className={controlDeckStyles.input} required
-              value={form.name} onChange={e => {
-                const name = e.target.value
-                setForm(f => ({ ...f, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') }))
-              }} placeholder="Panadería Demo" /></Field>
-            <Field label="Slug *"><input className={controlDeckStyles.input} required
-              value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-') }))}
-              placeholder="panaderia-demo" /></Field>
-            <Field label="Dueño"><input className={controlDeckStyles.input}
-              value={form.owner_name} onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))}
-              placeholder="Laura Morales" /></Field>
-            <Field label="Email"><input className={controlDeckStyles.input} type="email"
-              value={form.owner_email} onChange={e => setForm(f => ({ ...f, owner_email: e.target.value }))}
-              placeholder="laura@negocio.com" /></Field>
-            <Field label="Teléfono"><input className={controlDeckStyles.input}
-              value={form.owner_phone} onChange={e => setForm(f => ({ ...f, owner_phone: e.target.value }))}
-              placeholder="+57 300 000 0000" /></Field>
-            <Field label="Plan SaaS">
+            <Field label="Nombre *">
+              <input className={controlDeckStyles.input} required value={form.name}
+                onChange={e => { const n=e.target.value; setForm(f => ({ ...f, name:n, slug:f.slug||n.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') })) }}
+                placeholder="Panadería Demo" />
+            </Field>
+            <Field label="Slug *">
+              <input className={controlDeckStyles.input} required value={form.slug}
+                onChange={e => setForm(f => ({ ...f, slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-') }))}
+                placeholder="panaderia-demo" />
+            </Field>
+            <Field label="Dueño">
+              <input className={controlDeckStyles.input} value={form.owner_name}
+                onChange={e => setForm(f => ({ ...f, owner_name:e.target.value }))} placeholder="Laura Morales" />
+            </Field>
+            <Field label="Email">
+              <input className={controlDeckStyles.input} type="email" value={form.owner_email}
+                onChange={e => setForm(f => ({ ...f, owner_email:e.target.value }))} placeholder="laura@negocio.com" />
+            </Field>
+            <Field label="Teléfono">
+              <input className={controlDeckStyles.input} value={form.owner_phone}
+                onChange={e => setForm(f => ({ ...f, owner_phone:e.target.value }))} placeholder="+57 300 000 0000" />
+            </Field>
+            <Field label="Plan">
               <select className={controlDeckStyles.select} value={plan} onChange={e => setPlan(e.target.value)}>
-                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {PLANS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
           </FormGrid>
-          <Actions>
-            <Button type="submit" disabled={saving}>{saving ? 'Creando...' : 'Crear Tenant'}</Button>
-          </Actions>
+          <Actions><Button type="submit" disabled={saving}>{saving ? 'Creando…' : 'Crear Tenant'}</Button></Actions>
         </Form>
       </Panel>
+
       <Panel title={`Tenants (${tenants.length})`} dark>
-        {loading ? <Notice>Cargando...</Notice> : tenants.map(t => {
-          const sub = t.tenant_subscriptions?.[0]
-          const stores = t.stores?.[0]?.count ?? 0
+        {loading && <Notice>Cargando…</Notice>}
+        {tenants.map(t => {
+          const sub    = t.tenant_subscriptions?.[0]
+          const nStores= t.stores?.[0]?.count ?? 0
           return (
             <div key={t.id} style={{ padding:'10px 0', borderBottom:'1px solid var(--color-border-tertiary)',
               display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
               <div>
                 <div style={{ fontWeight:500, fontSize:13 }}>{t.name}</div>
                 <div style={{ fontSize:11, color:'var(--color-text-secondary)', marginTop:2 }}>
-                  {t.owner_email} · {stores} tienda{stores!==1?'s':''} · {planLabel(sub?.plan_id)}
+                  {t.owner_email} · {nStores} tienda{nStores!==1?'s':''} · {sub?.plan_id||'sin plan'}
                 </div>
               </div>
               <div style={{ display:'flex', gap:6, alignItems:'center', flexShrink:0 }}>
                 <span style={{ fontSize:11, padding:'2px 8px', borderRadius:20, fontWeight:500,
-                  background: t.status==='active'?'#dcfce7':'#fef2f2',
-                  color: t.status==='active'?'#16a34a':'#dc2626' }}>{t.status}</span>
-                <GhostButton type="button" style={{ fontSize:11, padding:'3px 8px' }}
-                  onClick={() => toggleStatus(t)}>
+                  background:t.status==='active'?'#dcfce7':'#fef2f2',
+                  color:t.status==='active'?'#16a34a':'#dc2626' }}>{t.status}</span>
+                <GhostButton type="button" style={{ fontSize:11, padding:'3px 8px' }} onClick={() => toggleStatus(t)}>
                   {t.status==='active'?'Suspender':'Activar'}
                 </GhostButton>
               </div>
