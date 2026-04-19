@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabaseAuth
         .from('user_memberships')
-        .select('role, tenant_id, store_id, branch_id, is_active')
+        .select('role, tenant_id, store_id, branch_id, is_active, metadata')
         .eq('user_id', userId)
         .eq('is_active', true)
 

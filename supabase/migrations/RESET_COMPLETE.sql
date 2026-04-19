@@ -799,6 +799,39 @@ create table public.account_activations (
   unique (user_id, role, tenant_id, store_id, branch_id)
 );
 
+-- ── 19. LANDING REQUESTS (leads del formulario público) ──────────
+create table public.landing_requests (
+  id              uuid primary key default gen_random_uuid(),
+  full_name       text,
+  email           text,
+  phone           text,
+  business_name   text,
+  business_niche  text,
+  city            text,
+  message         text,
+  source          text default 'landing',
+  status          text not null default 'pending'
+                    check (status in ('pending','contacted','demo_scheduled','onboarding','converted','rejected','ghosted')),
+  contacted_at    timestamptz,
+  converted_at    timestamptz,
+  updated_at      timestamptz not null default now(),
+  created_at      timestamptz not null default now()
+);
+
+-- ── 20. TENANT SUBSCRIPTIONS (plan SaaS por tenant) ──────────────
+create table public.tenant_subscriptions (
+  id                     uuid primary key default gen_random_uuid(),
+  tenant_id              uuid not null references public.tenants(id) on delete cascade,
+  plan_id                text not null default 'growth',
+  status                 text not null default 'active'
+                           check (status in ('active','cancelled','past_due','trialing')),
+  current_period_end     timestamptz,
+  stripe_subscription_id text,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  unique (tenant_id)
+);
+
 -- ══════════════════════════════════════════════════════════════════
 -- SECCIÓN 2: FUNCIONES DE SEGURIDAD
 -- ══════════════════════════════════════════════════════════════════
@@ -833,7 +866,7 @@ returns uuid language sql stable as $$
 $$;
 
 create or replace function public.is_super_admin()
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select
     auth.role() = 'service_role'
     or public.current_request_app_role() = 'super_admin'
@@ -850,7 +883,7 @@ create or replace function public.can_access_scope(
   target_store_id text default null,
   target_branch_id uuid default null
 )
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select
     public.is_super_admin()
     or (
@@ -1058,6 +1091,8 @@ end; $$;
 -- ══════════════════════════════════════════════════════════════════
 
 -- Habilitar RLS en tablas críticas
+alter table public.landing_requests       enable row level security;
+alter table public.tenant_subscriptions   enable row level security;
 alter table public.tenants            enable row level security;
 alter table public.stores             enable row level security;
 alter table public.branches           enable row level security;
@@ -1152,10 +1187,27 @@ create policy branches_scoped_manage on public.branches
   using (public.can_access_scope(tenant_id, store_id, id))
   with check (public.can_access_scope(tenant_id, store_id, id));
 
-create policy user_memberships_own on public.user_memberships
+-- user_memberships: dos políticas sin recursión
+-- 1. Cada usuario lee sus propias filas (sin llamar funciones externas)
+create policy user_memberships_own_read on public.user_memberships
+  for select to authenticated
+  using (user_id = auth.uid());
+-- 2. Super admin puede todo (is_super_admin es SECURITY DEFINER, no recursa)
+create policy user_memberships_super_admin_all on public.user_memberships
   for all to authenticated
-  using (user_id = auth.uid() or public.is_super_admin())
-  with check (user_id = auth.uid() or public.is_super_admin());
+  using (public.is_super_admin()) with check (public.is_super_admin());
+
+-- landing_requests: super_admin gestiona, anon puede insertar
+create policy landing_requests_super_admin on public.landing_requests
+  for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
+create policy landing_requests_public_insert on public.landing_requests
+  for insert to anon, authenticated with check (true);
+
+-- tenant_subscriptions: scoped por tenant
+create policy tenant_subscriptions_super_admin on public.tenant_subscriptions
+  for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
+create policy tenant_subscriptions_scoped on public.tenant_subscriptions
+  for select to authenticated using (public.can_access_scope(tenant_id, null, null));
 
 -- Lectura pública del catálogo (clientes sin login)
 create policy products_public_read on public.products
