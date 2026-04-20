@@ -2,11 +2,16 @@ import React from 'react'
 import {
   Btn,
   C,
+  Field,
+  Alert,
   SectionHeader,
   StatusDot,
   Badge,
   Modal,
   PIPELINE_COLS,
+  PLAN_META,
+  inp,
+  slugify,
 } from './superAdminShared'
 import {
   countLandingRequestsByStatus,
@@ -16,10 +21,250 @@ import {
   inviteLandingRequest,
   listLandingRequests,
   updateLandingRequest,
+  createTenant,
+  createOwnerAccount,
+  createStore,
 } from '../../../shared/lib/supabaseApi'
 
+// ══════════════════════════════════════════════════════════════════
+// WIZARD — Activar lead: Tenant + Cuenta + Tienda
+// ══════════════════════════════════════════════════════════════════
+function ActivarLeadWizard({ lead, onClose, onDone }) {
+  const [step, setStep]     = React.useState(1)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError]   = React.useState('')
+  const [createdTenantId, setCreatedTenantId] = React.useState(null)
+  const [planId, setPlanId] = React.useState('growth')
+
+  const [tenant, setTenant] = React.useState({
+    name:        lead.business_name || lead.full_name || '',
+    slug:        slugify(lead.business_name || lead.full_name || ''),
+    owner_name:  lead.full_name || '',
+    owner_email: lead.email || '',
+    owner_phone: lead.phone || '',
+    monthly_fee: 0,
+    notes:       `Lead de landing. Nicho: ${lead.business_niche || '—'}`,
+    status:      'active',
+  })
+
+  const [account, setAccount] = React.useState({
+    full_name: lead.full_name || '',
+    email:     lead.email || '',
+    password:  '',
+  })
+
+  const [store, setStore] = React.useState({
+    id:            slugify(lead.business_name || lead.full_name || '') + '-principal',
+    name:          lead.business_name || lead.full_name || '',
+    template_id:   'delivery',
+    business_type: lead.business_niche || 'food',
+    city:          lead.city || '',
+  })
+
+  const STEPS = [
+    ['1', 'Tenant'],
+    ['2', 'Cuenta dueño'],
+    ['3', 'Tienda'],
+    ['4', '¡Listo!'],
+  ]
+
+  async function handleStep1(e) {
+    e.preventDefault(); setError(''); setSaving(true)
+    try {
+      const t = await createTenant({ ...tenant, plan_id: planId })
+      setCreatedTenantId(t.id)
+      setStore(s => ({ ...s, id: slugify(tenant.slug) + '-principal' }))
+      setStep(2)
+    } catch (err) { setError(err.message) }
+    setSaving(false)
+  }
+
+  async function handleStep2(e) {
+    e.preventDefault(); setError(''); setSaving(true)
+    try {
+      if (account.email && account.password) {
+        await createOwnerAccount({ ...account, tenant_id: createdTenantId, role: 'tenant_owner' })
+      }
+      setStep(3)
+    } catch (err) { setError(err.message) }
+    setSaving(false)
+  }
+
+  async function handleStep3(e) {
+    e.preventDefault(); setError(''); setSaving(true)
+    try {
+      await createStore({ ...store, tenant_id: createdTenantId, plan_id: planId, status: 'active' })
+      // Marcar el lead como convertido
+      await updateLandingRequest(lead.id, { status: 'converted' })
+      setStep(4)
+    } catch (err) { setError(err.message) }
+    setSaving(false)
+  }
+
+  return (
+    <Modal title={`Activar: ${lead.full_name || lead.business_name || lead.email}`} onClose={onClose} width={660}>
+      {/* Stepper */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24, background: C.bg2, borderRadius: 10, padding: 6 }}>
+        {STEPS.map(([n, l]) => (
+          <div key={n} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 4px' }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 14, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 12, fontWeight: 700,
+              background: Number(n) <= step ? C.text : C.border2,
+              color: Number(n) <= step ? C.bg : C.muted,
+            }}>
+              {Number(n) < step ? '✓' : n}
+            </div>
+            <span style={{ fontSize: 11, fontWeight: Number(n) === step ? 600 : 400, color: Number(n) === step ? C.text : C.muted, textAlign: 'center' }}>{l}</span>
+          </div>
+        ))}
+      </div>
+
+      {error && <Alert>{error}</Alert>}
+
+      {/* PASO 1 — Datos del tenant */}
+      {step === 1 && (
+        <form onSubmit={handleStep1} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Field label="Nombre del negocio *" style={{ gridColumn: '1/-1' }}>
+            <input style={inp} required value={tenant.name}
+              onChange={e => setTenant(t => ({ ...t, name: e.target.value, slug: t.slug || slugify(e.target.value) }))}
+              placeholder="Pizzería Roma" />
+          </Field>
+          <Field label="Slug (URL) *" hint="Solo minúsculas y guiones">
+            <input style={inp} required value={tenant.slug}
+              onChange={e => setTenant(t => ({ ...t, slug: slugify(e.target.value) }))}
+              placeholder="pizzeria-roma" />
+          </Field>
+          <Field label="Fee mensual (€)">
+            <input style={inp} type="number" min={0} value={tenant.monthly_fee}
+              onChange={e => setTenant(t => ({ ...t, monthly_fee: Number(e.target.value) }))} />
+          </Field>
+          <Field label="Nombre del dueño">
+            <input style={inp} value={tenant.owner_name}
+              onChange={e => setTenant(t => ({ ...t, owner_name: e.target.value }))} />
+          </Field>
+          <Field label="Email del dueño">
+            <input style={inp} type="email" value={tenant.owner_email}
+              onChange={e => setTenant(t => ({ ...t, owner_email: e.target.value }))} />
+          </Field>
+          <Field label="Teléfono">
+            <input style={inp} value={tenant.owner_phone}
+              onChange={e => setTenant(t => ({ ...t, owner_phone: e.target.value }))} />
+          </Field>
+          <Field label="Plan" style={{ gridColumn: '1/-1' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginTop: 4 }}>
+              {Object.entries(PLAN_META).map(([id, pm]) => (
+                <button key={id} type="button" onClick={() => setPlanId(id)}
+                  style={{ padding: '10px 8px', borderRadius: 10, border: `2px solid ${planId === id ? pm.color : C.border2}`, background: planId === id ? `${pm.color}12` : 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{pm.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: planId === id ? pm.color : C.text }}>{pm.label}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{pm.price}/mes</div>
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Notas" style={{ gridColumn: '1/-1' }}>
+            <textarea style={{ ...inp, height: 60, resize: 'vertical' }} value={tenant.notes}
+              onChange={e => setTenant(t => ({ ...t, notes: e.target.value }))} />
+          </Field>
+          <div style={{ gridColumn: '1/-1', display: 'flex', gap: 8 }}>
+            <Btn type="submit" disabled={saving}>{saving ? 'Creando…' : 'Crear tenant →'}</Btn>
+            <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+          </div>
+        </form>
+      )}
+
+      {/* PASO 2 — Cuenta del dueño */}
+      {step === 2 && (
+        <form onSubmit={handleStep2} style={{ display: 'grid', gap: 14 }}>
+          <div style={{ padding: '12px 14px', background: '#eff6ff', borderRadius: 10, fontSize: 13, color: '#1e40af' }}>
+            ✅ Tenant creado. Ahora crea la cuenta de acceso del dueño.
+          </div>
+          <Field label="Nombre completo *">
+            <input style={inp} required value={account.full_name}
+              onChange={e => setAccount(a => ({ ...a, full_name: e.target.value }))} />
+          </Field>
+          <Field label="Email de acceso *">
+            <input style={inp} type="email" required value={account.email}
+              onChange={e => setAccount(a => ({ ...a, email: e.target.value }))} />
+          </Field>
+          <Field label="Contraseña temporal *" hint="El dueño deberá cambiarla al entrar">
+            <input style={inp} required value={account.password}
+              onChange={e => setAccount(a => ({ ...a, password: e.target.value }))} placeholder="Mín. 8 caracteres" />
+          </Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn type="submit" disabled={saving}>{saving ? 'Creando cuenta…' : 'Crear cuenta →'}</Btn>
+            <Btn variant="ghost" type="button" onClick={() => setStep(3)}>Saltar (sin cuenta)</Btn>
+          </div>
+        </form>
+      )}
+
+      {/* PASO 3 — Crear tienda principal */}
+      {step === 3 && (
+        <form onSubmit={handleStep3} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ gridColumn: '1/-1', padding: '12px 14px', background: '#eff6ff', borderRadius: 10, fontSize: 13, color: '#1e40af' }}>
+            ✅ Cuenta creada. Ahora crea la primera tienda del dueño.
+          </div>
+          <Field label="ID de tienda (único) *" hint="Solo letras, números y guiones" style={{ gridColumn: '1/-1' }}>
+            <input style={inp} required value={store.id}
+              onChange={e => setStore(s => ({ ...s, id: slugify(e.target.value) }))}
+              placeholder="mi-tienda-principal" />
+          </Field>
+          <Field label="Nombre de la tienda *">
+            <input style={inp} required value={store.name}
+              onChange={e => setStore(s => ({ ...s, name: e.target.value }))} />
+          </Field>
+          <Field label="Ciudad">
+            <input style={inp} value={store.city}
+              onChange={e => setStore(s => ({ ...s, city: e.target.value }))} placeholder="Madrid" />
+          </Field>
+          <Field label="Plantilla">
+            <select style={inp} value={store.template_id}
+              onChange={e => setStore(s => ({ ...s, template_id: e.target.value }))}>
+              <option value="delivery">🚚 Delivery</option>
+              <option value="grid">🧩 Grid</option>
+              <option value="catalog">📋 Catálogo</option>
+              <option value="boutique">👗 Boutique</option>
+              <option value="booking">📅 Reservas</option>
+            </select>
+          </Field>
+          <Field label="Tipo de negocio">
+            <input style={inp} value={store.business_type}
+              onChange={e => setStore(s => ({ ...s, business_type: e.target.value }))} placeholder="food" />
+          </Field>
+          <div style={{ gridColumn: '1/-1', display: 'flex', gap: 8 }}>
+            <Btn type="submit" disabled={saving}>{saving ? 'Creando tienda…' : '🏪 Crear tienda y activar →'}</Btn>
+            <Btn variant="ghost" type="button" onClick={() => { updateLandingRequest(lead.id, { status: 'converted' }); onDone() }}>Saltar (sin tienda)</Btn>
+          </div>
+        </form>
+      )}
+
+      {/* PASO 4 — Confirmación */}
+      {step === 4 && (
+        <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
+          <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>¡Dueño activado!</h3>
+          <p style={{ color: C.muted, fontSize: 14, marginBottom: 8 }}>
+            <strong>{tenant.name}</strong> tiene acceso a su panel de control.
+          </p>
+          {account.email && (
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>
+              Credenciales enviadas a <strong>{account.email}</strong>.
+            </p>
+          )}
+          <Btn onClick={onDone}>Cerrar</Btn>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DETALLE DEL LEAD
+// ══════════════════════════════════════════════════════════════════
 function PipelineLeadDetail({ lead, onClose, onRefresh }) {
-  const [busy, setBusy] = React.useState(false)
+  const [busy, setBusy]         = React.useState(false)
+  const [activarWizard, setActivarWizard] = React.useState(false)
 
   async function handleStatus(nextStatus) {
     setBusy(true)
@@ -43,9 +288,20 @@ function PipelineLeadDetail({ lead, onClose, onRefresh }) {
     }
   }
 
+  if (activarWizard) {
+    return (
+      <ActivarLeadWizard
+        lead={lead}
+        onClose={() => setActivarWizard(false)}
+        onDone={async () => { await onRefresh(); onClose() }}
+      />
+    )
+  }
+
   return (
     <Modal title={`Lead: ${lead.full_name || lead.business_name || lead.email || lead.id}`} onClose={onClose} width={680}>
       <div style={{ display: 'grid', gap: 16 }}>
+        {/* Datos del lead */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: C.muted }}>Nombre</div>
@@ -60,17 +316,46 @@ function PipelineLeadDetail({ lead, onClose, onRefresh }) {
             <div style={{ fontSize: 14, fontWeight: 600 }}>{lead.email || '—'}</div>
           </div>
           <div>
+            <div style={{ fontSize: 12, color: C.muted }}>Teléfono</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{lead.phone || '—'}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: C.muted }}>Ciudad</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{lead.city || '—'}</div>
+          </div>
+          <div>
             <div style={{ fontSize: 12, color: C.muted }}>Estado</div>
             <StatusDot status={lead.status || 'pending'} />
           </div>
+          {lead.business_niche && (
+            <div style={{ gridColumn: '1/-1' }}>
+              <div style={{ fontSize: 12, color: C.muted }}>Nicho</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{lead.business_niche}</div>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn onClick={() => handleStatus('contacted')} disabled={busy}>Marcar contactado</Btn>
-          <Btn variant="ghost" onClick={() => handleStatus('demo_scheduled')} disabled={busy}>Agendar demo</Btn>
-          <Btn variant="ghost" onClick={handleInvite} disabled={busy}>Enviar invitación</Btn>
-          <Btn variant="ghost" onClick={() => handleStatus('converted')} disabled={busy}>Convertir</Btn>
-          <Btn variant="ghost" onClick={() => handleStatus('rejected')} disabled={busy}>Rechazar</Btn>
+        {/* Botón principal de activación */}
+        <div style={{ padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>🚀 Activar acceso al panel</div>
+          <div style={{ fontSize: 12, color: '#166534', marginBottom: 12 }}>
+            Crea el tenant, la cuenta del dueño y su primera tienda en un solo flujo.
+          </div>
+          <Btn onClick={() => setActivarWizard(true)} disabled={busy}>
+            ✅ Activar → Crear tenant + cuenta + tienda
+          </Btn>
+        </div>
+
+        {/* Acciones secundarias del pipeline */}
+        <div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, fontWeight: 600 }}>Gestión del pipeline</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" onClick={() => handleStatus('contacted')} disabled={busy}>Marcar contactado</Btn>
+            <Btn variant="ghost" onClick={() => handleStatus('demo_scheduled')} disabled={busy}>Agendar demo</Btn>
+            <Btn variant="ghost" onClick={handleInvite} disabled={busy}>📧 Enviar invitación email</Btn>
+            <Btn variant="ghost" onClick={() => handleStatus('converted')} disabled={busy}>Convertido (manual)</Btn>
+            <Btn variant="danger" onClick={() => handleStatus('rejected')} disabled={busy}>Rechazar</Btn>
+          </div>
         </div>
       </div>
     </Modal>
