@@ -2,7 +2,6 @@ import React from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { supabaseAuth } from '../../../legacy/lib/supabase'
 import { useAuth } from '../../../core/providers/AuthProvider'
-import { ROLE_HOME } from '../../../core/router/roleHome'
 
 export default function LoginPage() {
   const { isAuthenticated, loading, role, authError } = useAuth()
@@ -17,9 +16,10 @@ export default function LoginPage() {
   const [error,   setError]   = React.useState('')
   const [success, setSuccess] = React.useState('')
 
-  // Ya autenticado con rol → redirigir a su panel
+  // Ya autenticado con rol → dejar que HomeEntry decida (verifica tiendas para tenant_owner)
   if (!loading && isAuthenticated && role && role !== 'anonymous') {
-    const dest = from && from !== '/login' ? from : (ROLE_HOME[role] || '/')
+    // Si venía de una ruta protegida específica, respetarla. Si no, ir a / para que HomeEntry decida.
+    const dest = from && from !== '/login' && from !== '/onboarding' ? from : '/'
     return <Navigate to={dest} replace />
   }
 

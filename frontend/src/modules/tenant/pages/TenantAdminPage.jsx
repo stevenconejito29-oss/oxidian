@@ -13,7 +13,6 @@ import { supabaseAuth } from '../../../shared/supabase/client'
 import { usePlan } from '../../../shared/hooks/usePlan'
 import FeatureGate, { LimitGate, PlanBadge } from '../../../shared/ui/FeatureGate'
 import { FEATURES } from '../../../shared/lib/planFeatures'
-
 // ─── UI base ─────────────────────────────────────────────────────
 function Btn({ children, onClick, disabled, variant='primary', size='md', type='button', style={} }) {
   const pad = size==='sm' ? '6px 14px' : '10px 20px'
@@ -206,7 +205,15 @@ export default function TenantAdminPage() {
   React.useEffect(() => { load() }, [load])
 
   const { can, canCreateMore, plan, FEATURES: F } = usePlan()
-  
+
+  // Primer login sin tiendas → redirigir al onboarding
+  React.useEffect(() => {
+    if (!loading && tenantId && stores.length === 0 && !error) {
+      // Solo redirigir después de que la carga haya terminado y confirmado 0 tiendas
+      navigate('/onboarding', { replace: true })
+    }
+  }, [loading, tenantId, stores.length, error, navigate])
+
   if (!tenantId) return (
     <div style={{ padding:24 }}>
       <Alert>Esta cuenta no tiene tenant asignado. Contacta al administrador.</Alert>

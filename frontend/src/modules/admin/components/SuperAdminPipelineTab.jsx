@@ -23,7 +23,6 @@ import {
   updateLandingRequest,
   createTenant,
   createOwnerAccount,
-  createStore,
 } from '../../../shared/lib/supabaseApi'
 
 // ══════════════════════════════════════════════════════════════════
@@ -93,7 +92,21 @@ function ActivarLeadWizard({ lead, onClose, onDone }) {
   async function handleStep3(e) {
     e.preventDefault(); setError(''); setSaving(true)
     try {
-      await createStore({ ...store, tenant_id: createdTenantId, plan_id: planId, status: 'active' })
+      // La tienda se crea via backend Flask (service_role — bypasea RLS de stores)
+      const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
+      const token = (await import('../../../legacy/lib/appSession')).readCurrentSupabaseAccessToken()
+      const res = await fetch(`${BACKEND}/admin/stores`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ...store, tenant_id: createdTenantId, plan_id: planId, status: 'active' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || err?.message || 'Error creando tienda')
+      }
       // Marcar el lead como convertido
       await updateLandingRequest(lead.id, { status: 'converted' })
       setStep(4)
@@ -280,9 +293,21 @@ function PipelineLeadDetail({ lead, onClose, onRefresh }) {
   async function handleInvite() {
     setBusy(true)
     try {
-      await inviteLandingRequest(lead.id, lead.redirect_to || lead.url || '/')
+      const result = await inviteLandingRequest(lead.id, lead.redirect_to || lead.url || '/')
+      if (result?.success === false && result?.error?.includes('ya existe')) {
+        // Usuario ya registrado en Auth → abrir wizard de activación directamente
+        setActivarWizard(true)
+        return
+      }
       await onRefresh()
       onClose()
+    } catch (err) {
+      // 409: el usuario ya existe en Auth — redirigir al wizard de activación
+      if (err.message?.includes('409') || err.message?.includes('ya existe')) {
+        setActivarWizard(true)
+        return
+      }
+      alert(err.message)
     } finally {
       setBusy(false)
     }

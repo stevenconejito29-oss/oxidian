@@ -1,7 +1,7 @@
 -- ============================================================
 -- OXIDIAN / CARMOCREAM
 -- Canonical database schema index
--- Fecha de consolidacion: 2026-04-17
+-- Fecha de consolidacion: 2026-04-21
 -- ============================================================
 --
 -- Este archivo funciona como punto canonico de referencia del esquema
@@ -14,7 +14,10 @@
 --   4. supabase/migrations/0004_fix_42803.sql
 --   5. supabase/migrations/0004_patch_functions.sql
 --   6. supabase/migrations/0005_testing_readiness.sql
---   7. supabase/migrations/RESET_COMPLETE.sql
+--   7. supabase/migrations/0006_fix_rls_auth_errors.sql
+--   8. supabase/migrations/0007_fix_security_and_missing_tables.sql
+--   9. supabase/migrations/0008_plans_and_feature_overrides.sql
+--  10. supabase/migrations/0009_fix_tenants_rls_tenant_owner.sql  ← NUEVO
 --
 -- Regla de trabajo:
 --   - cualquier nueva funcionalidad con datos debe reflejarse aqui primero

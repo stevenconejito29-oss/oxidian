@@ -1,6 +1,28 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../legacy/lib/supabase'
+import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
+
+async function _backendFetch(method, path, body) {
+  const token = readCurrentSupabaseAccessToken()
+  const res = await fetch(`${BACKEND}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('application/json')) {
+    throw new Error(`Backend no disponible en ${path}. Configura VITE_BACKEND_URL.`)
+  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data?.error || data?.message || res.statusText || 'Error del servidor')
+  return data?.data ?? data
+}
 
 const NICHOS = [
   { id:'barbershop', label:'Barbería / Estética', icon:'✂', desc:'Citas, servicios, galería' },
@@ -239,37 +261,27 @@ export default function OnboardingPage() {
   async function handleSaveInfo() {
     setSaving(true); setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user?.id || !user?.email) throw new Error('Debes iniciar sesion para continuar el onboarding.')
-      const ownerEmail = String(user.email).trim().toLowerCase()
-      const { data: existing } = await supabase.from('tenants').select('id').eq('owner_email', ownerEmail).maybeSingle()
-      let tenantId
-      if (existing) {
-        tenantId = existing.id
-      } else {
-        const { data: t, error: te } = await supabase.from('tenants').insert({
-          slug: info.slug + '-tenant', name: info.name, owner_name: info.owner_name,
-          owner_email: ownerEmail, owner_phone: info.owner_phone, status:'active',
-        }).select().single()
-        if (te) throw te
-        tenantId = t.id
-      }
-      await supabase.from('user_memberships').upsert({
-        user_id: user.id, role:'tenant_owner', tenant_id: tenantId, is_active:true
-      }, { onConflict: 'user_id,role,tenant_id,store_id,branch_id' })
-      await supabase.from('tenant_subscriptions').upsert({
-        tenant_id: tenantId, plan_id:'growth', status:'active',
-        current_period_end: new Date(Date.now()+30*86400000).toISOString()
-      }, { onConflict: 'tenant_id' })
-      const theme = { primary: estetica.palette.primary, surface: estetica.palette.surface }
-      const { data: store, error: se } = await supabase.from('stores').insert({
-        id: info.slug, slug: info.slug, name: info.name, tenant_id: tenantId,
-        status:'active', business_type: nicho === 'universal' ? 'other' : 'food',
-        niche: nicho, city: info.city, public_visible:true, theme_tokens: theme,
-      }).select().single()
-      if (se) throw se
-      setCreatedStoreId(store.id)
-      await supabase.rpc('apply_niche_preset', { p_store_id: store.id, p_tenant_id: tenantId, p_niche_id: nicho }).throwOnError()
+      const { data: { user } } = await supabaseAuth.auth.getUser()
+      if (!user?.id || !user?.email) throw new Error('Debes iniciar sesión para continuar el onboarding.')
+
+      // Crear tienda y tenant via backend Flask (service_role bypasea RLS)
+      const result = await _backendFetch('POST', '/tenant/stores', {
+        id: info.slug,
+        slug: info.slug,
+        name: info.name,
+        city: info.city,
+        niche: nicho,
+        business_type: nicho === 'universal' ? 'other' : 'food',
+        status: 'active',
+        public_visible: true,
+        theme_tokens: { primary: estetica.palette.primary, surface: estetica.palette.surface },
+        // Datos para crear/asociar el tenant si no existe
+        owner_name: info.owner_name,
+        owner_email: user.email,
+        owner_phone: info.owner_phone,
+      })
+
+      setCreatedStoreId(result.store?.id || info.slug)
       setStep('sede')
     } catch(e) { setError(e.message) }
     setSaving(false)
@@ -278,14 +290,16 @@ export default function OnboardingPage() {
   async function handleSaveSede() {
     setSaving(true); setError('')
     try {
-      const { data: store } = await supabase.from('stores').select('tenant_id').eq('id', createdStoreId).single()
-      const { data: branch, error: be } = await supabase.from('branches').insert({
-        tenant_id: store.tenant_id, store_id: createdStoreId,
-        slug:'sede-principal', name: sede.name, address: sede.address,
-        city: sede.city, phone: sede.phone, status:'active', is_primary:true, public_visible:true,
-      }).select().single()
-      if (be) throw be
-      setCreatedBranchId(branch.id)
+      const result = await _backendFetch('POST', '/tenant/branches', {
+        store_id: createdStoreId,
+        slug: 'sede-principal',
+        name: sede.name,
+        address: sede.address,
+        city: sede.city,
+        phone: sede.phone,
+        is_primary: true,
+      })
+      setCreatedBranchId(result.id)
       setStep('estética')
     } catch(e) { setError(e.message) }
     setSaving(false)
@@ -294,9 +308,9 @@ export default function OnboardingPage() {
   async function handleFinish() {
     setSaving(true)
     try {
-      await supabase.from('stores').update({
-        theme_tokens: { primary: estetica.palette.primary, surface: estetica.palette.surface }
-      }).eq('id', createdStoreId)
+      await _backendFetch('PATCH', `/tenant/stores/${createdStoreId}`, {
+        theme_tokens: { primary: estetica.palette.primary, surface: estetica.palette.surface },
+      })
     } catch {}
     setSaving(false)
     setStep('listo')

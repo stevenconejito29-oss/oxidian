@@ -46,18 +46,27 @@ async function _backendFetch(method, path, body) {
 export async function listTenants() {
   const { data, error } = await supabaseAuth
     .from('tenants')
-    .select('*, stores(count)')
+    .select('id, name, slug, owner_name, owner_email, owner_phone, status, monthly_fee, notes, created_at, plan_id, stores(count)')
     .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
+  // RLS: super_admin ve todo; tenant_owner solo ve el suyo propio
+  if (error) {
+    // Si el error es de permisos RLS, intentar via RPC
+    if (error.code === '42501' || error.message?.includes('permission denied')) {
+      const { data: rpcData, error: rpcError } = await supabaseAuth.rpc('get_my_tenants')
+      if (rpcError) throw new Error(rpcError.message)
+      return rpcData || []
+    }
+    throw new Error(error.message)
+  }
   return data || []
 }
 
 export async function createTenant(payload) {
-  const { name, slug, owner_name, owner_email, owner_phone, notes, status = 'active', monthly_fee = 0 } = payload
+  const { name, slug, owner_name, owner_email, owner_phone, notes, status = 'active', monthly_fee = 0, plan_id = 'growth' } = payload
   if (!name || !slug) throw new Error('name y slug son requeridos')
   const { data, error } = await supabaseAuth
     .from('tenants')
-    .insert({ name, slug: slug.toLowerCase(), owner_name, owner_email, owner_phone, notes, status, monthly_fee })
+    .insert({ name, slug: slug.toLowerCase(), owner_name, owner_email, owner_phone, notes, status, monthly_fee, plan_id })
     .select()
     .single()
   if (error) throw new Error(error.message)
@@ -65,7 +74,7 @@ export async function createTenant(payload) {
 }
 
 export async function updateTenant(tenantId, patch) {
-  const allowed = ['name', 'owner_name', 'owner_email', 'owner_phone', 'status', 'monthly_fee', 'notes']
+  const allowed = ['name', 'owner_name', 'owner_email', 'owner_phone', 'status', 'monthly_fee', 'notes', 'plan_id']
   const safe = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)))
   const { data, error } = await supabaseAuth
     .from('tenants')

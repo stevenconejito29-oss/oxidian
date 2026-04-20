@@ -109,6 +109,29 @@ def create_tenant_store():
     scope = _scope()
     body = request.get_json(silent=True) or {}
 
+    # El tenant_id puede no estar en el JWT en el primer login (claims no propagados aún).
+    # En ese caso lo resolvemos directamente desde user_memberships con service_role.
+    tenant_id = scope.get("tenant_id")
+    if not tenant_id:
+        user_id = g.auth_context.user_id
+        if not user_id:
+            abort(403, "No se pudo resolver el tenant del usuario")
+        row = (
+            sb.table("user_memberships")
+            .select("tenant_id")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .in_("role", ["tenant_owner", "tenant_admin"])
+            .order("created_at", desc=False)
+            .limit(1)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not row or not row.get("tenant_id"):
+            abort(403, "El usuario no tiene tenant asignado")
+        tenant_id = row["tenant_id"]
+
     name = _clean_text(body.get("name"))
     store_id = _clean_text(body.get("id") or body.get("slug")).lower()
     slug = _clean_text(body.get("slug") or store_id).lower()
@@ -130,7 +153,7 @@ def create_tenant_store():
     payload = {
         "id": store_id,
         "slug": slug,
-        "tenant_id": scope["tenant_id"],
+        "tenant_id": tenant_id,
         "name": name,
         "city": city,
         "notes": notes,
@@ -154,7 +177,7 @@ def create_tenant_store():
     try:
         sb.rpc("apply_niche_preset", {
             "p_store_id": created_store["id"],
-            "p_tenant_id": scope["tenant_id"],
+            "p_tenant_id": tenant_id,
             "p_niche_id": payload["niche"],
         }).execute()
     except Exception:
@@ -165,7 +188,7 @@ def create_tenant_store():
     created_branch = None
     if initial_branch_name:
         branch_payload = {
-            "tenant_id": scope["tenant_id"],
+            "tenant_id": tenant_id,
             "store_id": created_store["id"],
             "slug": initial_branch_slug or "principal",
             "name": initial_branch_name,
@@ -245,12 +268,31 @@ def create_tenant_branch():
     if not store_id:
         abort(400, "store_id requerido")
 
+    # Resolver tenant_id igual que en create_tenant_store
+    tenant_id = scope.get("tenant_id")
+    if not tenant_id:
+        user_id = g.auth_context.user_id
+        row = (
+            sb.table("user_memberships")
+            .select("tenant_id")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .in_("role", ["tenant_owner", "tenant_admin"])
+            .limit(1)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not row or not row.get("tenant_id"):
+            abort(403, "El usuario no tiene tenant asignado")
+        tenant_id = row["tenant_id"]
+
     store = sb.table("stores").select("id,tenant_id").eq("id", store_id).maybe_single().execute().data
-    if not store or store.get("tenant_id") != scope["tenant_id"]:
+    if not store or store.get("tenant_id") != tenant_id:
         abort(400, "La tienda no pertenece al tenant activo")
 
     payload = {
-        "tenant_id": scope["tenant_id"],
+        "tenant_id": tenant_id,
         "store_id": store_id,
         "slug": body["slug"].lower().strip(),
         "name": body["name"].strip(),

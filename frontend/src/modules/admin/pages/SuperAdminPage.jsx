@@ -489,9 +489,12 @@ function TenantWizard({ onClose, onDone }) {
           <Field label="Email de acceso *">
             <input style={inp} type="email" required value={account.email} onChange={e=>setAccount(a=>({...a,email:e.target.value}))} placeholder="juan@negocio.com" />
           </Field>
-          <Field label="Contraseña temporal *" hint="El dueño deberá cambiarla en su primer inicio de sesión">
-            <input style={inp} required value={account.password} onChange={e=>setAccount(a=>({...a,password:e.target.value}))} placeholder="Mínimo 8 caracteres" />
+          <Field label="Contraseña temporal *" hint="El dueño puede cambiarla desde su perfil">
+            <input style={inp} type="password" required value={account.password} onChange={e=>setAccount(a=>({...a,password:e.target.value}))} placeholder="Mínimo 8 caracteres" />
           </Field>
+          <div style={{padding:'10px 14px',background:'#fefce8',borderRadius:8,fontSize:12,color:'#854d0e'}}>
+            ⚠️ La cuenta se crea con <strong>is_active: true</strong> y rol <strong>tenant_owner</strong>. El dueño podrá entrar de inmediato.
+          </div>
           <div style={{display:'flex',gap:8}}>
             <Btn type="submit" disabled={saving}>{saving?'Creando cuenta…':'Crear cuenta →'}</Btn>
             <Btn variant="ghost" type="button" onClick={()=>setStep(3)}>Saltar (sin cuenta)</Btn>
@@ -504,9 +507,33 @@ function TenantWizard({ onClose, onDone }) {
         <div style={{textAlign:'center',padding:'20px 0'}}>
           <div style={{fontSize:56,marginBottom:16}}>🎉</div>
           <h3 style={{margin:'0 0 8px',fontSize:20,fontWeight:800}}>¡Tenant creado!</h3>
-          <p style={{color:C.muted,fontSize:14,marginBottom:24}}>
-            <strong>{tenant.name}</strong> está listo. {account.email && `Cuenta creada para ${account.email}.`}
+          <p style={{color:C.muted,fontSize:14,marginBottom:20}}>
+            <strong>{tenant.name}</strong> está listo en la plataforma.
           </p>
+          {account.email && (
+            <div style={{background:C.bg2,borderRadius:12,padding:'14px 18px',marginBottom:20,textAlign:'left'}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.05em',marginBottom:10}}>
+                Credenciales de acceso del dueño
+              </div>
+              <div style={{display:'grid',gap:6}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{color:C.muted}}>Email</span>
+                  <strong style={{wordBreak:'break-all'}}>{account.email}</strong>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{color:C.muted}}>Contraseña temporal</span>
+                  <strong style={{fontFamily:'monospace'}}>{account.password||'—'}</strong>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0'}}>
+                  <span style={{color:C.muted}}>Rol asignado</span>
+                  <Badge color="#6366f1">tenant_owner</Badge>
+                </div>
+              </div>
+              <div style={{marginTop:10,fontSize:11,color:'#16a34a',background:'#f0fdf4',borderRadius:6,padding:'6px 10px'}}>
+                ✅ Cuenta activa — el dueño puede iniciar sesión de inmediato en /login
+              </div>
+            </div>
+          )}
           <div style={{display:'flex',gap:8,justifyContent:'center'}}>
             <Btn onClick={onDone}>Ver todos los tenants</Btn>
             <Btn variant="ghost" onClick={()=>{ setStep(1); setTenant({name:'',slug:'',owner_name:'',owner_email:'',owner_phone:'',monthly_fee:0,notes:'',status:'active'}); setAccount({full_name:'',email:'',password:''}); setPlanId('growth'); setCreatedTenantId(null) }}>Crear otro</Btn>

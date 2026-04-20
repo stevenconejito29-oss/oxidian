@@ -77,7 +77,7 @@ export default function DashboardLayout({ children, activeTab, onTabChange, titl
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
 
-  const navItems = NAV_BY_ROLE[role] || []
+  const navItems = NAV_BY_ROLE[role] || NAV_BY_ROLE['tenant_owner'] || []
   const name = membership?.metadata?.full_name || user?.email?.split('@')[0] || role
 
   const ROLE_LABELS = {

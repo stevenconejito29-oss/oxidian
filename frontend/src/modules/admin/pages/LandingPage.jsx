@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { supabase } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../legacy/lib/supabase'
 import { useAuth } from '../../../core/providers/AuthProvider'
 import { ROLE_HOME } from '../../../core/router/roleHome'
 
@@ -50,7 +50,7 @@ export default function LandingPage() {
   async function submit(e) {
     e.preventDefault(); setSending(true); setError('')
     try {
-      const { error: err } = await supabase.from('landing_requests').insert({
+      const { error: err } = await supabaseAuth.from('landing_requests').insert({
         full_name: form.full_name, email: form.email, phone: form.phone,
         business_name: form.business_name, business_niche: form.business_niche,
         city: form.city, message: form.message, source:'landing', status:'pending',
