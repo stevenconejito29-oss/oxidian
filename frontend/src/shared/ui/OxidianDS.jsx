@@ -257,3 +257,120 @@ export function Stepper({ steps, current }) {
 export function slugify(v) {
   return String(v||'').toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-{2,}/g,'-').replace(/^-|-$/g,'')
 }
+
+// ─── Card ────────────────────────────────────────────────────────
+export function Card({ children, style, className }) {
+  return (
+    <div className={`ods-card ${className||''}`} style={{
+      background:'var(--color-background-primary)',
+      border:'1px solid var(--color-border-secondary)',
+      borderRadius:12,
+      padding:20,
+      ...style
+    }}>{children}</div>
+  )
+}
+
+// ─── Btn ─────────────────────────────────────────────────────────
+export function Btn({ children, onClick, variant='primary', size='md', disabled, style, type='button' }) {
+  const base = {
+    display:'inline-flex', alignItems:'center', gap:6, fontWeight:600,
+    borderRadius:8, border:'none', cursor:disabled?'not-allowed':'pointer',
+    opacity:disabled?0.5:1, transition:'filter .15s',
+    fontSize: size==='sm'?13:size==='lg'?16:14,
+    padding: size==='sm'?'6px 12px':size==='lg'?'12px 22px':'9px 18px',
+    ...style
+  }
+  const variants = {
+    primary:  { background:'var(--color-text-primary)', color:'var(--color-background-primary)' },
+    secondary:{ background:'var(--color-background-secondary)', color:'var(--color-text-primary)', border:'1px solid var(--color-border-secondary)' },
+    danger:   { background:'#ef4444', color:'#fff' },
+    ghost:    { background:'transparent', color:'var(--color-text-primary)', border:'1px solid var(--color-border-secondary)' },
+  }
+  return (
+    <button type={type} onClick={onClick} disabled={disabled} className="ods-btn"
+      style={{...base, ...(variants[variant]||variants.primary)}}>
+      {children}
+    </button>
+  )
+}
+
+// ─── Input ───────────────────────────────────────────────────────
+export function Input({ label, value, onChange, placeholder, type='text', disabled, error, style }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+      {label&&<label style={{fontSize:13,fontWeight:600,color:'var(--color-text-secondary)'}}>{label}</label>}
+      <input
+        type={type} value={value??''} onChange={onChange}
+        placeholder={placeholder} disabled={disabled}
+        style={{
+          padding:'9px 12px', borderRadius:8, fontSize:14,
+          border:`1px solid ${error?'#ef4444':'var(--color-border-secondary)'}`,
+          background:'var(--color-background-primary)',
+          color:'var(--color-text-primary)', width:'100%', boxSizing:'border-box',
+          ...style
+        }}
+      />
+      {error&&<span style={{fontSize:12,color:'#ef4444'}}>{error}</span>}
+    </div>
+  )
+}
+
+// ─── Select ──────────────────────────────────────────────────────
+export function Select({ label, value, onChange, children, disabled, error, style }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+      {label&&<label style={{fontSize:13,fontWeight:600,color:'var(--color-text-secondary)'}}>{label}</label>}
+      <select
+        value={value??''} onChange={onChange} disabled={disabled}
+        style={{
+          padding:'9px 12px', borderRadius:8, fontSize:14,
+          border:`1px solid ${error?'#ef4444':'var(--color-border-secondary)'}`,
+          background:'var(--color-background-primary)',
+          color:'var(--color-text-primary)', width:'100%', boxSizing:'border-box',
+          ...style
+        }}
+      >{children}</select>
+      {error&&<span style={{fontSize:12,color:'#ef4444'}}>{error}</span>}
+    </div>
+  )
+}
+
+// ─── Textarea ────────────────────────────────────────────────────
+export function Textarea({ label, value, onChange, placeholder, rows=3, disabled, error, style }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+      {label&&<label style={{fontSize:13,fontWeight:600,color:'var(--color-text-secondary)'}}>{label}</label>}
+      <textarea
+        value={value??''} onChange={onChange} rows={rows}
+        placeholder={placeholder} disabled={disabled}
+        style={{
+          padding:'9px 12px', borderRadius:8, fontSize:14, resize:'vertical',
+          border:`1px solid ${error?'#ef4444':'var(--color-border-secondary)'}`,
+          background:'var(--color-background-primary)',
+          color:'var(--color-text-primary)', width:'100%', boxSizing:'border-box',
+          ...style
+        }}
+      />
+      {error&&<span style={{fontSize:12,color:'#ef4444'}}>{error}</span>}
+    </div>
+  )
+}
+
+// ─── Alert ───────────────────────────────────────────────────────
+export function Alert({ children, type='info', style }) {
+  const colors = {
+    info:    { bg:'#eff6ff', border:'#bfdbfe', text:'#1d4ed8' },
+    success: { bg:'#f0fdf4', border:'#bbf7d0', text:'#15803d' },
+    warning: { bg:'#fffbeb', border:'#fde68a', text:'#92400e' },
+    error:   { bg:'#fef2f2', border:'#fecaca', text:'#b91c1c' },
+  }
+  const c = colors[type]||colors.info
+  return (
+    <div style={{
+      padding:'10px 14px', borderRadius:8, fontSize:14,
+      background:c.bg, border:`1px solid ${c.border}`, color:c.text,
+      ...style
+    }}>{children}</div>
+  )
+}
