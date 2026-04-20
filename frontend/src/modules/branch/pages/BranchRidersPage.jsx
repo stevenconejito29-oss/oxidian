@@ -4,9 +4,10 @@
  * botones grandes, enlace a Google Maps, teléfono clickeable.
  */
 import React from 'react'
-import { supabase } from '../../../legacy/lib/supabase'
+import { useSearchParams } from 'react-router-dom'
+import { supabaseAuth } from '../../../shared/supabase/client'
 import { useRealtimeOrders } from '../../../legacy/lib/useRealtimeOrders'
-import { useResolvedStoreId } from '../../../legacy/lib/currentStore'
+import { useResolvedStoreId } from '../../../shared/hooks/useResolvedStoreId'
 import { buildOrderStatusUpdate } from '../../../legacy/lib/orderStatusUpdate'
 import { timeAgo } from '../../../legacy/lib/orderUtils'
 import { OrderTimer, Btn, Spinner, Empty } from '../../../shared/ui/OxidianDS'
@@ -129,9 +130,11 @@ function DeliveryCard({ order, onAdvance, busy }) {
 }
 
 export default function BranchRidersPage() {
-  const storeId = useResolvedStoreId()
+  const [params]  = useSearchParams()
+  const storeId   = useResolvedStoreId()
+  const branchId  = params.get('branch_id') || params.get('branch') || null
   const { orders, loading, refresh } = useRealtimeOrders({
-    statusFilter: ['ready','delivering'], storeId,
+    statusFilter: ['ready','delivering'], storeId, branchId,
   })
   const [busy,  setBusy]  = React.useState(null)
   const [error, setError] = React.useState('')
@@ -141,7 +144,7 @@ export default function BranchRidersPage() {
     setBusy(order.id); setError('')
     try {
       const patch = buildOrderStatusUpdate(order, nextStatus)
-      const { error: e } = await supabase.from('orders').update(patch).eq('id', order.id)
+      const { error: e } = await supabaseAuth.from('orders').update(patch).eq('id', order.id)
       if (e) throw e
       await refresh()
     } catch (e) { setError(e?.message||'Error al actualizar') }

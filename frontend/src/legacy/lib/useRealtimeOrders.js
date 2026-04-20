@@ -19,6 +19,7 @@ export function useRealtimeOrders({
   statusFilter = [],
   riderId      = null,
   cookId       = null,
+  branchId     = null,
   storeId      = DEFAULT_STORE_ID,
   limit        = 80,
 } = {}) {
@@ -34,10 +35,11 @@ export function useRealtimeOrders({
   const buildQuery = useCallback(() => {
     let q = supabase.from('orders').select('*').eq('store_id', activeStoreId).order('created_at', { ascending: false }).limit(limit)
     if (stableStatusFilter.length > 0) q = q.in('status', stableStatusFilter)
+    if (branchId) q = q.eq('branch_id', branchId)
     if (riderId) q = q.eq('assigned_rider_id', riderId)
     if (cookId)  q = q.eq('assigned_cook_id',  cookId)
     return q
-  }, [stableStatusFilter, riderId, cookId, limit, activeStoreId])
+  }, [stableStatusFilter, riderId, cookId, branchId, limit, activeStoreId])
 
   const refresh = useCallback(async () => {
     try {

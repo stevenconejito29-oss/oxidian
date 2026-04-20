@@ -19,7 +19,7 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
 // ── Helper para llamadas al Flask backend (solo creación de usuarios) ──
 async function _backendFetch(method, path, body) {
   const token = readCurrentSupabaseAccessToken()
-  const url   = `${BACKEND}/api/backend${path}`
+  const url   = `${BACKEND}${path}`
   const res   = await fetch(url, {
     method,
     headers: {
