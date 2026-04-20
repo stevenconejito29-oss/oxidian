@@ -2,9 +2,50 @@
 
 ## Fecha
 
+- 2026-04-20
 - 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-20 - diseno de Fase 1 para paneles administrativos
+
+### Decision de arquitectura
+
+- La mejora de backoffice se ejecutara en dos fases.
+- La Fase 1 prioriza `super_admin` y `tenant_owner` / `tenant_admin`.
+- `store_admin` y `branch_manager` quedan fuera del rediseño profundo inicial; solo recibiran ajustes de compatibilidad para no romper el flujo.
+- La razon es reducir errores de permisos, ownership, onboarding y navegacion antes de tocar la capa operativa de sede.
+
+### Documento de diseno
+
+- Se agrego la especificacion de trabajo en:
+  - `docs/superpowers/specs/2026-04-20-admin-phase-1-design.md`
+
+### Alcance validado para Fase 1
+
+- `SuperAdminPage` pasa a ser el control plane de plataforma con seis vistas:
+  - `overview`
+  - `tenants`
+  - `owners`
+  - `plans`
+  - `pipeline`
+  - `stores`
+- `TenantAdminPage` pasa a ser el control plane del negocio con cinco vistas:
+  - `overview`
+  - `stores`
+  - `branches`
+  - `staff`
+  - `customize`
+
+### Hallazgos tecnicos fijados en la spec
+
+- `frontend/src/core/providers/AuthProvider.jsx` sigue apoyandose en cliente legacy y debe alinearse con el cliente canonico antes del rediseño amplio.
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx` y `frontend/src/modules/tenant/pages/TenantAdminPage.jsx` duplican primitivas UI locales en vez de consolidarse sobre `DashboardLayout` y `OxidianDS`.
+- La Fase 1 debe fortalecer primero el gobierno de plataforma y tenant para evitar reescrituras posteriores en roles inferiores.
+
+### Pendiente inmediato
+
+- Esperar revision del usuario sobre la spec escrita antes de pasar al plan detallado de implementacion y luego a cambios de codigo.
 
 ## Iteracion 2026-04-19 - correccion canonica del panel del dueno y acceso local al backend
 
