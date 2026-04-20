@@ -24,6 +24,8 @@
 --   - existe la jerarquia tenant -> store -> branch
 --   - existe user_memberships para control de acceso jerarquico
 --   - existen funciones para claims JWT y autorizacion por alcance
+--   - stores.id es texto tipo slug, no uuid
+--   - tenant_subscriptions incluye feature_overrides y notes para overrides por tenant
 --   - el proyecto remoto de Supabase no parece tener activadas todas las
 --     policies/grants esperadas, aunque las migraciones locales si las definen
 --

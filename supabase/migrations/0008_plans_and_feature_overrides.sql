@@ -68,6 +68,7 @@ CREATE OR REPLACE FUNCTION public.change_tenant_plan(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   IF NOT public.is_super_admin() THEN

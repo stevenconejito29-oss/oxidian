@@ -825,6 +825,8 @@ create table public.tenant_subscriptions (
   plan_id                text not null default 'growth',
   status                 text not null default 'active'
                            check (status in ('active','cancelled','past_due','trialing')),
+  feature_overrides      jsonb not null default '{}'::jsonb,
+  notes                  text,
   current_period_end     timestamptz,
   stripe_subscription_id text,
   created_at             timestamptz not null default now(),

@@ -7,6 +7,19 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-20 - Schema/RLS minimo alineado con el frontend
+
+### Implementado
+
+- `RESET_COMPLETE.sql` ahora refleja `tenant_subscriptions.feature_overrides` y `notes`, que el frontend usa para el cambio de plan y feature gating.
+- La RPC `public.change_tenant_plan` en `0008_plans_and_feature_overrides.sql` queda fijada con `SET search_path = public` para evitar dependencias ambiguas.
+- `database_schema.sql` documenta el contrato real vigente: `stores.id` es `text` tipo slug y `tenant_subscriptions` soporta overrides por tenant.
+
+### Validacion
+
+- Se reviso la coherencia con el frontend que consume `tenant_subscriptions.feature_overrides` desde `usePlan()` y `changeTenantPlan()`.
+- Sin cambios funcionales en frontend requeridos para este ajuste de schema.
+
 ## Iteracion 2026-04-20 - diseno de Fase 1 para paneles administrativos
 
 ### Decision de arquitectura
