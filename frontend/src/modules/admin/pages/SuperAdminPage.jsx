@@ -1,191 +1,174 @@
+/**
+ * SuperAdminPage.jsx — Panel del Super Admin (Oxidian Platform)
+ * Diseño inspirado en Vercel / Linear / Retool.
+ * Tabs: Overview · Tenants · Tiendas · Planes · Pipeline · Chatbot
+ */
 import React from 'react'
 import DashboardLayout from '../../../core/app/DashboardLayout'
 import {
-  listTenants, createOwnerAccount, updateOwnerAccount, listOwnerAccounts,
-  listStores, createStore, inviteLandingRequest,
+  listTenants, createTenant, updateTenant,
+  listStores,  createStore,
+  listBranches,
+  listOwnerAccounts, createOwnerAccount,
+  getSuperAdminStats,
+  listLandingRequests,
 } from '../../../shared/lib/supabaseApi'
 import { PLANS, FEATURES, FEATURE_LABELS, planHasFeature } from '../../../shared/lib/planFeatures'
-import { supabaseAuth } from '../../../shared/supabase/client'
 import ChatbotAuthManager from '../components/ChatbotAuthManager'
+import SuperAdminPipelineTab from '../components/SuperAdminPipelineTab'
+import { getPendingLandingRequests } from '../lib/superAdminPipeline'
 
+// ─── helpers ─────────────────────────────────────────────────────
+function slugify(v) {
+  return String(v||'').toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-{2,}/g,'-').replace(/^-|-$/g,'')
+}
+function fmt(n){ return Number(n||0).toLocaleString('es-ES') }
+function fmtMoney(n){ return '€'+Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:0}) }
+function ago(d){
+  if(!d) return '—'
+  const s=Math.floor((Date.now()-new Date(d))/1000)
+  if(s<60) return 'ahora'
+  if(s<3600) return Math.floor(s/60)+'m'
+  if(s<86400) return Math.floor(s/3600)+'h'
+  return Math.floor(s/86400)+'d'
+}
 
-// ─── UI Atoms ─────────────────────────────────────────────────────
-function Btn({ children, onClick, disabled, variant = 'primary', size = 'md', type = 'button', style: s = {} }) {
-  const pad = size === 'sm' ? '5px 12px' : '9px 18px'
-  const fs  = size === 'sm' ? 11 : 13
-  const bg  = variant === 'primary' ? 'var(--color-text-primary)'
-             : variant === 'danger'  ? '#dc2626'
-             : variant === 'success' ? '#16a34a'
-             : variant === 'indigo'  ? '#6366f1'
-             : 'transparent'
-  const cl  = variant === 'ghost' ? 'var(--color-text-secondary)' : '#fff'
-  const bd  = variant === 'ghost' ? '1px solid var(--color-border-secondary)' : 'none'
+// ─── design tokens (inline, compatible con CSS vars del tema) ────
+const C = {
+  bg:     'var(--color-background-primary)',
+  bg2:    'var(--color-background-secondary)',
+  border: 'var(--color-border-tertiary)',
+  border2:'var(--color-border-secondary)',
+  text:   'var(--color-text-primary)',
+  muted:  'var(--color-text-secondary)',
+}
+const card  = { background:C.bg, border:`1px solid ${C.border}`, borderRadius:14, overflow:'hidden' }
+const inp   = { width:'100%', padding:'9px 12px', borderRadius:8, fontSize:13, border:`1px solid ${C.border2}`,
+                background:C.bg, color:C.text, fontFamily:'inherit', boxSizing:'border-box' }
+
+// ─── Micro-components ────────────────────────────────────────────
+function Btn({ children, onClick, disabled, variant='primary', size='md', type='button', style={} }) {
+  const pad = size==='sm'?'5px 12px':'9px 20px'
+  const fs  = size==='sm'?12:13
+  const bg  = variant==='primary'?C.text : variant==='danger'?'#dc2626' : 'transparent'
+  const cl  = variant==='ghost'?C.muted:'#fff'
+  const bd  = variant==='ghost'?`1px solid ${C.border2}`:'none'
   return (
     <button type={type} onClick={onClick} disabled={disabled} style={{
-      padding: pad, borderRadius: 8, border: bd,
-      background: disabled ? 'var(--color-background-secondary)' : bg,
-      color: disabled ? 'var(--color-text-secondary)' : cl,
-      fontSize: fs, fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer',
-      fontFamily: 'inherit', transition: '.15s', whiteSpace: 'nowrap', ...s,
+      padding:pad,borderRadius:8,border:bd,background:disabled?'#e5e7eb':bg,
+      color:disabled?'#9ca3af':cl,fontSize:fs,fontWeight:500,cursor:disabled?'not-allowed':'pointer',
+      fontFamily:'inherit',transition:'.15s',whiteSpace:'nowrap',...style,
     }}>{children}</button>
   )
 }
-
-function Input({ label, ...p }) {
+function Field({ label, hint, children }) {
   return (
     <div>
-      {label && <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 5 }}>{label}</label>}
-      <input {...p} style={{
-        width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
-        border: '1px solid var(--color-border-secondary)', boxSizing: 'border-box',
-        background: 'var(--color-background-primary)', color: 'var(--color-text-primary)',
-        fontFamily: 'inherit', outline: 'none', ...(p.style || {}),
-      }} />
-    </div>
-  )
-}
-
-function Sel({ label, children, ...p }) {
-  return (
-    <div>
-      {label && <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 5 }}>{label}</label>}
-      <select {...p} style={{
-        width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
-        border: '1px solid var(--color-border-secondary)', boxSizing: 'border-box',
-        background: 'var(--color-background-primary)', color: 'var(--color-text-primary)',
-        fontFamily: 'inherit', ...(p.style || {}),
-      }}>{children}</select>
-    </div>
-  )
-}
-
-function Alert({ children, type = 'error' }) {
-  const c = { error: '#dc2626', success: '#16a34a', info: '#2563eb', warn: '#d97706' }
-  const b = { error: '#fef2f2', success: '#f0fdf4', info: '#eff6ff', warn: '#fffbeb' }
-  return (
-    <div style={{
-      padding: '10px 14px', borderRadius: 8, marginBottom: 12,
-      background: b[type] || b.info, color: c[type] || c.info,
-      fontSize: 13, border: `1px solid ${c[type] || c.info}30`,
-    }}>{children}</div>
-  )
-}
-
-function Card({ children, title, sub, action, p = '18px', style: s = {} }) {
-  return (
-    <div style={{
-      background: 'var(--color-background-primary)',
-      border: '1px solid var(--color-border-tertiary)',
-      borderRadius: 14, overflow: 'hidden', ...s,
-    }}>
-      {(title || action) && (
-        <div style={{
-          padding: '14px 18px', borderBottom: '1px solid var(--color-border-tertiary)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
-            {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sub}</div>}
-          </div>
-          {action}
-        </div>
-      )}
-      <div style={{ padding: p }}>{children}</div>
-    </div>
-  )
-}
-
-function StatCard({ label, value, icon, hint, color = '#6366f1' }) {
-  return (
-    <div style={{
-      background: 'var(--color-background-primary)',
-      border: '1px solid var(--color-border-tertiary)',
-      borderRadius: 14, padding: '18px 20px',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--color-text-secondary)' }}>{label}</span>
-        <span style={{ fontSize: 20 }}>{icon}</span>
-      </div>
-      <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-1.5px', marginTop: 8, color }}>{value ?? '…'}</div>
-      {hint && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>{hint}</div>}
-    </div>
-  )
-}
-
-function Badge({ children, color = '#64748b' }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
-      borderRadius: 20, fontSize: 11, fontWeight: 600,
-      background: `${color}18`, color, border: `1px solid ${color}30`,
-    }}>{children}</span>
-  )
-}
-
-function Empty({ icon = '📭', text }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--color-text-secondary)' }}>
-      <div style={{ fontSize: 40, marginBottom: 10 }}>{icon}</div>
-      <div style={{ fontSize: 13 }}>{text}</div>
-    </div>
-  )
-}
-
-function Grid2({ children }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+      <label style={{display:'block',fontSize:12,color:C.muted,marginBottom:5,fontWeight:500}}>{label}</label>
       {children}
+      {hint&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{hint}</div>}
+    </div>
+  )
+}
+function Alert({ children, type='error' }) {
+  const palette={error:{bg:'#fef2f2',text:'#b91c1c'},success:{bg:'#f0fdf4',text:'#15803d'},info:{bg:'#eff6ff',text:'#1d4ed8'},warn:{bg:'#fefce8',text:'#854d0e'}}
+  const p=palette[type]||palette.error
+  return <div style={{padding:'10px 14px',borderRadius:8,marginBottom:12,background:p.bg,color:p.text,fontSize:13}}>{children}</div>
+}
+function StatCard({ label, value, icon, hint, color, onClick }) {
+  return (
+    <div onClick={onClick} style={{...card,padding:'18px 20px',cursor:onClick?'pointer':'default',transition:'.15s',boxShadow:'0 1px 3px rgba(0,0,0,.05)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+        <span style={{fontSize:11,textTransform:'uppercase',letterSpacing:'.06em',color:C.muted,fontWeight:600}}>{label}</span>
+        <span style={{fontSize:22}}>{icon}</span>
+      </div>
+      <div style={{fontSize:32,fontWeight:800,letterSpacing:'-1.5px',color:color||C.text}}>{value??'—'}</div>
+      {hint&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>{hint}</div>}
+    </div>
+  )
+}
+function Badge({ children, color='#64748b' }) {
+  return <span style={{display:'inline-block',padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600,background:`${color}18`,color,whiteSpace:'nowrap'}}>{children}</span>
+}
+function StatusDot({ status }) {
+  const colors={active:'#16a34a',suspended:'#dc2626',archived:'#6b7280',draft:'#ca8a04',pending:'#2563eb',converted:'#16a34a',rejected:'#dc2626',ghosted:'#9ca3af',contacted:'#7c3aed',demo_scheduled:'#0891b2',onboarding:'#ea580c'}
+  const labels={active:'Activo',suspended:'Suspendido',archived:'Archivado',draft:'Borrador',pending:'Pendiente',converted:'Convertido',rejected:'Rechazado',ghosted:'Sin respuesta',contacted:'Contactado',demo_scheduled:'Demo',onboarding:'Onboarding'}
+  const c=colors[status]||'#9ca3af', l=labels[status]||status
+  return <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:20,fontSize:11,fontWeight:600,background:`${c}18`,color:c}}><span style={{width:5,height:5,borderRadius:'50%',background:c,flexShrink:0}} />{l}</span>
+}
+function SectionHeader({ title, subtitle, action }) {
+  return (
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
+      <div>
+        <h2 style={{margin:0,fontSize:20,fontWeight:800,letterSpacing:'-0.5px'}}>{title}</h2>
+        {subtitle&&<p style={{margin:'4px 0 0',fontSize:13,color:C.muted}}>{subtitle}</p>}
+      </div>
+      {action}
+    </div>
+  )
+}
+function TabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{display:'flex',gap:2,marginBottom:28,flexWrap:'wrap',background:C.bg,border:`1px solid ${C.border}`,borderRadius:12,padding:4}}>
+      {tabs.map(t=>(
+        <button key={t.id} onClick={()=>onChange(t.id)} style={{
+          padding:'8px 16px',borderRadius:9,border:'none',cursor:'pointer',
+          fontSize:13,fontWeight:active===t.id?600:400,fontFamily:'inherit',
+          background:active===t.id?C.text:'transparent',
+          color:active===t.id?C.bg:C.muted,
+          display:'flex',alignItems:'center',gap:6,transition:'.15s',
+        }}>{t.icon} {t.label}</button>
+      ))}
+    </div>
+  )
+}
+function Modal({ title, onClose, children, width=560 }) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{background:C.bg,borderRadius:16,width:'100%',maxWidth:width,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.25)'}}>
+        <div style={{padding:'18px 22px',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontWeight:700,fontSize:16}}>{title}</span>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:C.muted,lineHeight:1}}>✕</button>
+        </div>
+        <div style={{padding:'22px'}}>{children}</div>
+      </div>
     </div>
   )
 }
 
-function slugify(v) {
-  return String(v || '').toLowerCase().trim()
-    .replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '')
-}
-
-const STATUS_META = {
-  active:          { label: 'Activo',      color: '#16a34a' },
-  suspended:       { label: 'Suspendido',  color: '#dc2626' },
-  archived:        { label: 'Archivado',   color: '#64748b' },
-  draft:           { label: 'Borrador',    color: '#64748b' },
-  paused:          { label: 'Pausado',     color: '#f59e0b' },
-  pending:         { label: 'Pendiente',   color: '#ca8a04' },
-  contacted:       { label: 'Contactado',  color: '#2563eb' },
-  demo_scheduled:  { label: 'Demo',        color: '#7c3aed' },
-  onboarding:      { label: 'Onboarding',  color: '#0891b2' },
-  converted:       { label: 'Convertido',  color: '#16a34a' },
-  rejected:        { label: 'Rechazado',   color: '#dc2626' },
-  ghosted:         { label: 'Ghosted',     color: '#9ca3af' },
-}
-
-function StatusBadge({ status }) {
-  const m = STATUS_META[status] || { label: status, color: '#64748b' }
-  return <Badge color={m.color}>{m.label}</Badge>
-}
-
-
-// ─── TABS ─────────────────────────────────────────────────────────
-const TABS = [
-  { id: 'overview',  icon: '📊', label: 'Visión Global' },
-  { id: 'tenants',   icon: '🏢', label: 'Tenants' },
-  { id: 'plans',     icon: '💎', label: 'Planes' },
-  { id: 'owners',    icon: '👤', label: 'Dueños' },
-  { id: 'pipeline',  icon: '📋', label: 'Solicitudes' },
-  { id: 'stores',    icon: '🏪', label: 'Tiendas' },
-  { id: 'chatbot',   icon: '🤖', label: 'Chatbot' },
-]
-
+// ─── Constantes ──────────────────────────────────────────────────
 const NICHES = [
-  { id: 'restaurant',          icon: '🍕', label: 'Restaurante',   template: 'delivery'  },
-  { id: 'supermarket',         icon: '🛒', label: 'Supermercado',  template: 'vitrina'   },
-  { id: 'boutique_fashion',    icon: '👗', label: 'Moda',          template: 'portfolio' },
-  { id: 'pharmacy',            icon: '💊', label: 'Farmacia',      template: 'minimal'   },
-  { id: 'neighborhood_store',  icon: '🏪', label: 'Tienda Barrio', template: 'minimal'   },
-  { id: 'barbershop',          icon: '✂️', label: 'Barbería',      template: 'booking'   },
-  { id: 'beauty_salon',        icon: '💅', label: 'Salón',         template: 'booking'   },
-  { id: 'services',            icon: '🛠️', label: 'Servicios',     template: 'booking'   },
-  { id: 'universal',           icon: '⭐', label: 'Otro',          template: 'delivery'  },
+  { id:'restaurant',         icon:'🍕', label:'Restaurante',    color:'#ef4444' },
+  { id:'supermarket',        icon:'🛒', label:'Supermercado',   color:'#22c55e' },
+  { id:'boutique_fashion',   icon:'👗', label:'Moda/Boutique',  color:'#ec4899' },
+  { id:'pharmacy',           icon:'💊', label:'Farmacia',       color:'#0ea5e9' },
+  { id:'neighborhood_store', icon:'🏪', label:'Tienda Barrio',  color:'#f97316' },
+  { id:'barbershop',         icon:'✂️', label:'Barbería',       color:'#1d4ed8' },
+  { id:'beauty_salon',       icon:'💅', label:'Salón Belleza',  color:'#a855f7' },
+  { id:'services',           icon:'🛠️', label:'Servicios',      color:'#6366f1' },
+  { id:'universal',          icon:'⭐', label:'Otro',           color:'#64748b' },
+]
+const PIPELINE_COLS = [
+  { id:'pending',        label:'Nuevo',       color:'#ca8a04' },
+  { id:'contacted',      label:'Contactado',  color:'#7c3aed' },
+  { id:'demo_scheduled', label:'Demo',        color:'#0891b2' },
+  { id:'onboarding',     label:'Onboarding',  color:'#ea580c' },
+  { id:'converted',      label:'Convertido',  color:'#16a34a' },
+  { id:'rejected',       label:'Perdido',     color:'#dc2626' },
+]
+const PLAN_META = {
+  starter:  { label:'Starter',  color:'#64748b', price:'€0',    icon:'🌱' },
+  growth:   { label:'Growth',   color:'#2563eb', price:'€29',   icon:'🚀' },
+  pro:      { label:'Pro',      color:'#7c3aed', price:'€79',   icon:'💎' },
+  enterprise:{ label:'Enterprise',color:'#ea580c',price:'Personalizado',icon:'🏢' },
+}
+const TABS = [
+  { id:'overview',  icon:'📊', label:'Panel'        },
+  { id:'tenants',   icon:'🏢', label:'Tenants'      },
+  { id:'stores',    icon:'🏪', label:'Tiendas'      },
+  { id:'plans',     icon:'💎', label:'Planes'       },
+  { id:'pipeline',  icon:'📋', label:'Pipeline'     },
+  { id:'chatbot',   icon:'🤖', label:'Chatbot'      },
 ]
 
 // ══════════════════════════════════════════════════════════════════
@@ -193,807 +176,561 @@ const NICHES = [
 // ══════════════════════════════════════════════════════════════════
 export default function SuperAdminPage() {
   const [tab, setTab] = React.useState('overview')
-
   return (
-    <DashboardLayout activeTab={tab} onTabChange={setTab} title="Super Admin" subtitle="Oxidian">
-      {/* Tab bar */}
-      <div style={{
-        display: 'flex', gap: 4, marginBottom: 22, flexWrap: 'wrap',
-        background: 'var(--color-background-primary)',
-        border: '1px solid var(--color-border-tertiary)',
-        borderRadius: 12, padding: 4,
-      }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '7px 14px', borderRadius: 9, border: 'none', cursor: 'pointer',
-            fontSize: 13, fontWeight: tab === t.id ? 600 : 400, fontFamily: 'inherit',
-            background: tab === t.id ? 'var(--color-text-primary)' : 'transparent',
-            color: tab === t.id ? 'var(--color-background-primary)' : 'var(--color-text-secondary)',
-            display: 'flex', alignItems: 'center', gap: 5, transition: '.15s',
-          }}>
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'overview' && <OverviewTab setTab={setTab} />}
-      {tab === 'tenants'  && <TenantsTab />}
-      {tab === 'plans'    && <PlansTab />}
-      {tab === 'owners'   && <OwnersTab />}
-      {tab === 'pipeline' && <PipelineTab />}
-      {tab === 'stores'   && <StoresTab />}
-      {tab === 'chatbot'  && <ChatbotAuthManager />}
+    <DashboardLayout activeTab={tab} onTabChange={setTab} title="Super Admin" subtitle="Oxidian Platform">
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
+      {tab==='overview'  && <OverviewTab  setTab={setTab} />}
+      {tab==='tenants'   && <TenantsTab                  />}
+      {tab==='stores'    && <StoresTab                   />}
+      {tab==='plans'     && <PlansTab                    />}
+      {tab==='pipeline'  && <SuperAdminPipelineTab       />}
+      {tab==='chatbot'   && <ChatbotAuthManager          />}
     </DashboardLayout>
   )
 }
-
 
 // ══════════════════════════════════════════════════════════════════
 // OVERVIEW TAB
 // ══════════════════════════════════════════════════════════════════
 function OverviewTab({ setTab }) {
-  const [stats, setStats] = React.useState(null)
-  const [recent, setRecent] = React.useState([])
+  const [stats,    setStats]    = React.useState(null)
+  const [tenants,  setTenants]  = React.useState([])
+  const [pipeline, setPipeline] = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
 
   React.useEffect(() => {
-    Promise.all([
-      supabaseAuth.from('tenants').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('stores').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('branches').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('user_memberships').select('id', { count: 'exact', head: true }),
-      supabaseAuth.from('landing_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabaseAuth.from('orders').select('total')
-        .gte('created_at', new Date(Date.now() - 86400000).toISOString()),
-      supabaseAuth.from('tenants')
-        .select('id, name, status, created_at, tenant_subscriptions(plan_id)')
-        .order('created_at', { ascending: false }).limit(5),
-    ]).then(([t, s, b, m, l, o, rt]) => {
-      const rev = (o.data || []).reduce((sum, x) => sum + Number(x.total || 0), 0)
-      setStats({ tenants: t.count || 0, stores: s.count || 0, branches: b.count || 0,
-        members: m.count || 0, leads: l.count || 0, orders: o.data?.length || 0,
-        revenue: rev.toFixed(2) })
-      setRecent(rt.data || [])
-    })
+    Promise.all([getSuperAdminStats(), listTenants(), listLandingRequests()])
+      .then(([s, ts, leads]) => {
+        setStats(s)
+        setTenants(ts.slice(0,5))
+        setPipeline(getPendingLandingRequests(leads, 4))
+      })
+      .finally(() => setLoading(false))
   }, [])
 
+  const mrr = React.useMemo(() => {
+    if(!Array.isArray(tenants)) return 0
+    return tenants.reduce((s,t)=>s+Number(t.monthly_fee||0),0)
+  },[tenants])
+
+  if (loading) return <div style={{padding:'3rem',textAlign:'center',color:C.muted}}>Cargando…</div>
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-        <StatCard label="Tenants"      value={stats?.tenants}   icon="🏢" color="#6366f1" hint="Negocios" />
-        <StatCard label="Tiendas"      value={stats?.stores}    icon="🏪" color="#2563eb" hint="Marcas" />
-        <StatCard label="Sedes"        value={stats?.branches}  icon="📍" color="#0891b2" hint="Puntos op." />
-        <StatCard label="Usuarios"     value={stats?.members}   icon="👥" color="#7c3aed" hint="Staff+dueños" />
-        <StatCard label="Leads"        value={stats?.leads}     icon="📋" color="#ca8a04" hint="Sin contactar" />
-        <StatCard label="Pedidos (24h)" value={stats?.orders}   icon="📦" color="#16a34a" hint={`${stats?.revenue ?? '0.00'} EUR`} />
+    <div style={{display:'grid',gap:24}}>
+      {/* KPI row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12}}>
+        <StatCard label="Tenants activos" value={fmt(stats?.tenants)}  icon="🏢" color="#2563eb" hint="Clientes activos" onClick={()=>setTab('tenants')} />
+        <StatCard label="Tiendas"         value={fmt(stats?.stores)}   icon="🏪" color="#16a34a" hint="Todas las tiendas"onClick={()=>setTab('stores')}  />
+        <StatCard label="Sedes"           value={fmt(stats?.branches)} icon="📍" color="#7c3aed" hint="Unidades operativas" />
+        <StatCard label="Staff total"     value={fmt(stats?.members)}  icon="👥" color="#ea580c" hint="Cuentas de acceso" />
+        <StatCard label="MRR estimado"    value={fmtMoney(mrr)}        icon="💰" color="#ca8a04" hint="Ingresos mensuales" />
       </div>
 
-      <Grid2>
-        {/* Tenants recientes */}
-        <Card title="Últimos tenants" action={<Btn size="sm" onClick={() => setTab('tenants')}>Ver todos</Btn>}>
-          {!recent.length && <Empty icon="🏢" text="Sin tenants todavía" />}
-          {recent.map(t => {
-            const plan = t.tenant_subscriptions?.[0]
-            const p = PLANS[plan?.plan_id] || PLANS.starter
-            return (
-              <div key={t.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0',
-                borderBottom: '1px solid var(--color-border-tertiary)',
-              }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 9,
-                  background: '#6366f115', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 16, flexShrink: 0,
-                }}>🏢</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                    {new Date(t.created_at).toLocaleDateString('es-ES')}
+      {/* 2-col grid */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))',gap:16}}>
+        {/* Últimos tenants */}
+        <div style={card}>
+          <div style={{padding:'14px 18px',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontWeight:700,fontSize:14}}>🏢 Tenants recientes</span>
+            <Btn size="sm" onClick={()=>setTab('tenants')}>Ver todos →</Btn>
+          </div>
+          <div style={{padding:'0 18px'}}>
+            {!tenants.length && <div style={{padding:'2rem',textAlign:'center',color:C.muted,fontSize:13}}>Sin tenants todavía</div>}
+            {tenants.map(t=>{
+              const pm=PLAN_META[t.plan_id]||PLAN_META.starter
+              return (
+                <div key={t.id} style={{padding:'12px 0',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{width:38,height:38,borderRadius:10,background:'#6366f115',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>🏢</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.name}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{t.owner_email||'Sin email'} · {ago(t.created_at)}</div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    <StatusDot status={t.status||'active'} />
+                    <Badge color={pm.color}>{pm.icon} {pm.label}</Badge>
                   </div>
                 </div>
-                <Badge color={p.color}>{p.emoji} {p.name}</Badge>
-                <StatusBadge status={t.status} />
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Acciones rápidas */}
+        <div style={card}>
+          <div style={{padding:'14px 18px',borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontWeight:700,fontSize:14}}>⚡ Acciones rápidas</span>
+          </div>
+          <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:8}}>
+            {[
+              {icon:'🏢',label:'Crear nuevo tenant + cuenta',tab:'tenants',desc:'Wizard completo en 3 pasos'},
+              {icon:'🏪',label:'Ver todas las tiendas',tab:'stores',desc:`${fmt(stats?.stores)} tiendas registradas`},
+              {icon:'💎',label:'Gestionar planes',tab:'plans',desc:'Starter · Growth · Pro · Enterprise'},
+              {icon:'📋',label:'Pipeline de leads',tab:'pipeline',desc:`${pipeline.length} pendiente(s)`},
+            ].map(a=>(
+              <button key={a.tab} onClick={()=>setTab(a.tab)} style={{display:'flex',alignItems:'center',gap:14,padding:'13px 16px',borderRadius:10,border:`1px solid ${C.border}`,background:C.bg2,cursor:'pointer',fontFamily:'inherit',textAlign:'left',transition:'.15s'}}>
+                <span style={{fontSize:22}}>{a.icon}</span>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{a.label}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:1}}>{a.desc}</div>
+                </div>
+                <span style={{marginLeft:'auto',color:C.muted,fontSize:18}}>→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TENANTS TAB — lista + wizard creación
+// ══════════════════════════════════════════════════════════════════
+function TenantsTab() {
+  const [tenants,  setTenants]  = React.useState([])
+  const [owners,   setOwners]   = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
+  const [search,   setSearch]   = React.useState('')
+  const [filter,   setFilter]   = React.useState('all')
+  const [wizard,   setWizard]   = React.useState(false)
+  const [editT,    setEditT]    = React.useState(null)
+
+  const load = React.useCallback(async()=>{
+    setLoading(true)
+    const [ts,os] = await Promise.all([listTenants(), listOwnerAccounts()])
+    setTenants(Array.isArray(ts)?ts:[])
+    setOwners(Array.isArray(os)?os:[])
+    setLoading(false)
+  },[])
+  React.useEffect(()=>{ load() },[load])
+
+  const visible = tenants.filter(t=>{
+    const q=search.toLowerCase()
+    const m=!q||t.name?.toLowerCase().includes(q)||t.owner_email?.toLowerCase().includes(q)||t.owner_name?.toLowerCase().includes(q)
+    const s=filter==='all'||t.status===filter
+    return m&&s
+  })
+
+  return (
+    <div style={{display:'grid',gap:20}}>
+      <SectionHeader
+        title={`Tenants (${tenants.length})`}
+        subtitle="Gestiona los clientes de la plataforma y sus cuentas de acceso"
+        action={<Btn onClick={()=>setWizard(true)}>+ Nuevo Tenant</Btn>}
+      />
+
+      {/* Filtros */}
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+        <input style={{...inp,width:240,flex:'none'}} placeholder="Buscar por nombre o email…" value={search} onChange={e=>setSearch(e.target.value)} />
+        <select style={{...inp,width:'auto'}} value={filter} onChange={e=>setFilter(e.target.value)}>
+          <option value="all">Todos los estados</option>
+          <option value="active">Activos</option>
+          <option value="suspended">Suspendidos</option>
+          <option value="archived">Archivados</option>
+          <option value="draft">Borrador</option>
+        </select>
+        <span style={{fontSize:12,color:C.muted}}>{visible.length} resultado(s)</span>
+      </div>
+
+      {/* Tabla */}
+      {loading?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}>Cargando…</div>:(
+        <div style={{...card}}>
+          {/* Header */}
+          <div style={{display:'grid',gridTemplateColumns:'2fr 1.5fr 1fr 1fr 1fr 120px',gap:12,padding:'10px 18px',borderBottom:`1px solid ${C.border}`,fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.05em'}}>
+            <span>Tenant</span><span>Contacto</span><span>Plan</span><span>Estado</span><span>Fee/mes</span><span>Acciones</span>
+          </div>
+          {!visible.length&&<div style={{padding:'3rem',textAlign:'center',color:C.muted,fontSize:13}}>Sin resultados</div>}
+          {visible.map(t=>{
+            const pm=PLAN_META[t.plan_id]||PLAN_META.starter
+            const ownerCount=owners.filter(o=>o.tenant_id===t.id).length
+            return (
+              <div key={t.id} style={{display:'grid',gridTemplateColumns:'2fr 1.5fr 1fr 1fr 1fr 120px',gap:12,padding:'13px 18px',borderBottom:`1px solid ${C.border}`,alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>{t.name}</div>
+                  <div style={{fontSize:11,color:C.muted}}>/{t.slug} · {ownerCount} cuenta(s) · {ago(t.created_at)}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:13}}>{t.owner_name||'—'}</div>
+                  <div style={{fontSize:11,color:C.muted,wordBreak:'break-all'}}>{t.owner_email||'Sin email'}</div>
+                </div>
+                <Badge color={pm.color}>{pm.icon} {pm.label}</Badge>
+                <StatusDot status={t.status||'active'} />
+                <span style={{fontSize:13,fontWeight:600}}>{fmtMoney(t.monthly_fee)}</span>
+                <div style={{display:'flex',gap:6}}>
+                  <Btn size="sm" variant="ghost" onClick={()=>setEditT(t)}>Editar</Btn>
+                  <Btn size="sm" variant="ghost" onClick={async()=>{ await updateTenant(t.id,{status:t.status==='active'?'suspended':'active'}); load() }}>
+                    {t.status==='active'?'Suspender':'Activar'}
+                  </Btn>
+                </div>
               </div>
             )
           })}
-        </Card>
+        </div>
+      )}
 
-        {/* Panel de estado + acciones rápidas */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Card title="Estado del sistema">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { label: 'Supabase',  ok: true,  note: 'Conectado' },
-                { label: 'Auth + RLS', ok: true,  note: 'SECURITY DEFINER ✓' },
-                { label: 'Vercel',    ok: true,  note: 'Desplegado' },
-                { label: 'Flask API', ok: true,  note: '/api/backend activo' },
-              ].map(s => (
-                <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13 }}>{s.label}</span>
-                  <span style={{
-                    fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
-                    background: s.ok ? '#f0fdf4' : '#fef2f2',
-                    color: s.ok ? '#16a34a' : '#dc2626',
-                  }}>● {s.note}</span>
-                </div>
-              ))}
+      {wizard && <TenantWizard onClose={()=>setWizard(false)} onDone={()=>{ setWizard(false); load() }} />}
+      {editT  && <EditTenantModal tenant={editT} onClose={()=>setEditT(null)} onDone={()=>{ setEditT(null); load() }} />}
+    </div>
+  )
+}
+
+// ── Wizard Crear Tenant (3 pasos) ────────────────────────────────
+function TenantWizard({ onClose, onDone }) {
+  const [step,    setStep]    = React.useState(1)
+  const [saving,  setSaving]  = React.useState(false)
+  const [error,   setError]   = React.useState('')
+  const [tenant,  setTenant]  = React.useState({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', monthly_fee:0, notes:'', status:'active' })
+  const [account, setAccount] = React.useState({ full_name:'', email:'', password:'' })
+  const [planId,  setPlanId]  = React.useState('growth')
+  const [createdTenantId, setCreatedTenantId] = React.useState(null)
+
+  async function handleStep1(e) {
+    e.preventDefault(); setError(''); setSaving(true)
+    try {
+      const t = await createTenant({ ...tenant, plan_id: planId })
+      setCreatedTenantId(t.id)
+      setAccount(a=>({...a, full_name: tenant.owner_name, email: tenant.owner_email}))
+      setStep(2)
+    } catch(e){ setError(e.message) }
+    setSaving(false)
+  }
+
+  async function handleStep2(e) {
+    e.preventDefault(); setError(''); setSaving(true)
+    try {
+      if (account.email && account.password) {
+        await createOwnerAccount({ ...account, tenant_id: createdTenantId, role:'tenant_owner' })
+      }
+      setStep(3)
+    } catch(e){ setError(e.message) }
+    setSaving(false)
+  }
+
+  const STEPS = [['1','Datos del negocio'],['2','Cuenta del dueño'],['3','Confirmar']]
+
+  return (
+    <Modal title="Nuevo Tenant" onClose={onClose} width={620}>
+      {/* Stepper */}
+      <div style={{display:'flex',gap:0,marginBottom:24,background:C.bg2,borderRadius:10,padding:6}}>
+        {STEPS.map(([n,l],i)=>(
+          <div key={n} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'8px 4px'}}>
+            <div style={{width:28,height:28,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,
+              background:Number(n)<=step?C.text:C.border2,
+              color:Number(n)<=step?C.bg:C.muted}}>
+              {Number(n)<step?'✓':n}
             </div>
-          </Card>
+            <span style={{fontSize:11,fontWeight:Number(n)===step?600:400,color:Number(n)===step?C.text:C.muted,textAlign:'center'}}>{l}</span>
+          </div>
+        ))}
+      </div>
 
-          <Card title="Acciones rápidas">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[
-                { icon: '🏢', label: 'Crear tenant',          tab: 'tenants' },
-                { icon: '👤', label: 'Crear cuenta de dueño', tab: 'owners' },
-                { icon: '🏪', label: 'Crear tienda directa',  tab: 'stores' },
-                { icon: '📋', label: 'Revisar solicitudes',   tab: 'pipeline' },
-                { icon: '💎', label: 'Gestionar planes',      tab: 'plans' },
-              ].map(a => (
-                <button key={a.tab} onClick={() => setTab(a.tab)} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: 9, border: '1px solid var(--color-border-tertiary)',
-                  background: 'var(--color-background-secondary)', cursor: 'pointer',
-                  fontFamily: 'inherit', textAlign: 'left', transition: '.15s',
-                }}>
-                  <span style={{ fontSize: 18 }}>{a.icon}</span>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{a.label}</span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--color-text-secondary)' }}>→</span>
+      {error && <Alert>{error}</Alert>}
+
+      {/* PASO 1: Datos del negocio */}
+      {step===1 && (
+        <form onSubmit={handleStep1} style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+          <Field label="Nombre del negocio *" style={{gridColumn:'1/-1'}}>
+            <input style={inp} required value={tenant.name}
+              onChange={e=>setTenant(t=>({...t,name:e.target.value,slug:t.slug||slugify(e.target.value)}))}
+              placeholder="Pizzería Roma" />
+          </Field>
+          <Field label="Slug (URL) *" hint="Solo minúsculas, números y guiones">
+            <input style={inp} required value={tenant.slug}
+              onChange={e=>setTenant(t=>({...t,slug:slugify(e.target.value)}))}
+              placeholder="pizzeria-roma" />
+          </Field>
+          <Field label="Fee mensual (€)">
+            <input style={inp} type="number" min={0} value={tenant.monthly_fee}
+              onChange={e=>setTenant(t=>({...t,monthly_fee:Number(e.target.value)}))} placeholder="29" />
+          </Field>
+          <Field label="Nombre del dueño">
+            <input style={inp} value={tenant.owner_name}
+              onChange={e=>setTenant(t=>({...t,owner_name:e.target.value}))} placeholder="Juan García" />
+          </Field>
+          <Field label="Email del dueño">
+            <input style={inp} type="email" value={tenant.owner_email}
+              onChange={e=>setTenant(t=>({...t,owner_email:e.target.value}))} placeholder="juan@negocio.com" />
+          </Field>
+          <Field label="Teléfono">
+            <input style={inp} value={tenant.owner_phone}
+              onChange={e=>setTenant(t=>({...t,owner_phone:e.target.value}))} placeholder="+34 600 000 000" />
+          </Field>
+          <Field label="Plan" style={{gridColumn:'1/-1'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:4}}>
+              {Object.entries(PLAN_META).map(([id,pm])=>(
+                <button key={id} type="button" onClick={()=>setPlanId(id)} style={{padding:'10px 8px',borderRadius:10,border:`2px solid ${planId===id?pm.color:C.border2}`,background:planId===id?`${pm.color}12`:'transparent',cursor:'pointer',fontFamily:'inherit',transition:'.12s'}}>
+                  <div style={{fontSize:20,marginBottom:4}}>{pm.icon}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:planId===id?pm.color:C.text}}>{pm.label}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{pm.price}/mes</div>
                 </button>
               ))}
             </div>
-          </Card>
+          </Field>
+          <Field label="Notas internas" style={{gridColumn:'1/-1'}}>
+            <textarea style={{...inp,height:70,resize:'vertical'}} value={tenant.notes}
+              onChange={e=>setTenant(t=>({...t,notes:e.target.value}))} placeholder="Notas sobre el cliente…" />
+          </Field>
+          <div style={{gridColumn:'1/-1',display:'flex',gap:8}}>
+            <Btn type="submit" disabled={saving}>{saving?'Creando…':'Crear tenant →'}</Btn>
+            <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+          </div>
+        </form>
+      )}
+
+      {/* PASO 2: Cuenta del dueño */}
+      {step===2 && (
+        <form onSubmit={handleStep2} style={{display:'grid',gap:14}}>
+          <div style={{padding:'12px 14px',background:'#eff6ff',borderRadius:10,fontSize:13,color:'#1e40af'}}>
+            ✅ Tenant <strong>{tenant.name}</strong> creado. Ahora crea la cuenta de acceso del dueño.
+          </div>
+          <Field label="Nombre completo *">
+            <input style={inp} required value={account.full_name} onChange={e=>setAccount(a=>({...a,full_name:e.target.value}))} placeholder="Juan García" />
+          </Field>
+          <Field label="Email de acceso *">
+            <input style={inp} type="email" required value={account.email} onChange={e=>setAccount(a=>({...a,email:e.target.value}))} placeholder="juan@negocio.com" />
+          </Field>
+          <Field label="Contraseña temporal *" hint="El dueño deberá cambiarla en su primer inicio de sesión">
+            <input style={inp} required value={account.password} onChange={e=>setAccount(a=>({...a,password:e.target.value}))} placeholder="Mínimo 8 caracteres" />
+          </Field>
+          <div style={{display:'flex',gap:8}}>
+            <Btn type="submit" disabled={saving}>{saving?'Creando cuenta…':'Crear cuenta →'}</Btn>
+            <Btn variant="ghost" type="button" onClick={()=>setStep(3)}>Saltar (sin cuenta)</Btn>
+          </div>
+        </form>
+      )}
+
+      {/* PASO 3: Confirmación */}
+      {step===3 && (
+        <div style={{textAlign:'center',padding:'20px 0'}}>
+          <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+          <h3 style={{margin:'0 0 8px',fontSize:20,fontWeight:800}}>¡Tenant creado!</h3>
+          <p style={{color:C.muted,fontSize:14,marginBottom:24}}>
+            <strong>{tenant.name}</strong> está listo. {account.email && `Cuenta creada para ${account.email}.`}
+          </p>
+          <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+            <Btn onClick={onDone}>Ver todos los tenants</Btn>
+            <Btn variant="ghost" onClick={()=>{ setStep(1); setTenant({name:'',slug:'',owner_name:'',owner_email:'',owner_phone:'',monthly_fee:0,notes:'',status:'active'}); setAccount({full_name:'',email:'',password:''}); setPlanId('growth'); setCreatedTenantId(null) }}>Crear otro</Btn>
+          </div>
         </div>
-      </Grid2>
-    </div>
+      )}
+    </Modal>
   )
 }
 
-
-// ══════════════════════════════════════════════════════════════════
-// PLANS TAB — El corazón del SaaS: Super Admin gestiona qué puede
-// hacer cada tenant. Cambio de plan + overrides de features.
-// ══════════════════════════════════════════════════════════════════
-function PlansTab() {
-  const [rows,      setRows]      = React.useState([])
-  const [loading,   setLoading]   = React.useState(true)
-  const [selected,  setSelected]  = React.useState(null)  // tenant activo en editor
-  const [editPlan,  setEditPlan]  = React.useState('growth')
-  const [overrides, setOverrides] = React.useState({})
-  const [notes,     setNotes]     = React.useState('')
-  const [saving,    setSaving]    = React.useState(false)
-  const [notice,    setNotice]    = React.useState(null)
-
-  const load = async () => {
-    setLoading(true)
-    const { data } = await supabaseAuth
-      .from('tenants')
-      .select('id, name, owner_email, status, tenant_subscriptions(plan_id, status, feature_overrides, notes, current_period_end), stores(count)')
-      .order('created_at', { ascending: false })
-    setRows(data || [])
-    setLoading(false)
-  }
-  React.useEffect(() => { load() }, [])
-
-  function openEditor(row) {
-    const sub = row.tenant_subscriptions?.[0] || {}
-    setSelected(row)
-    setEditPlan(sub.plan_id || 'growth')
-    setOverrides(sub.feature_overrides || {})
-    setNotes(sub.notes || '')
-    setNotice(null)
-  }
-
-  async function handleSave() {
-    if (!selected) return
-    setSaving(true); setNotice(null)
-    const { error } = await supabaseAuth.rpc('change_tenant_plan', {
-      p_tenant_id: selected.id,
-      p_plan_id:   editPlan,
-      p_overrides: overrides,
-      p_notes:     notes || null,
-    })
-    if (error) setNotice({ type: 'error', msg: error.message })
-    else {
-      setNotice({ type: 'success', msg: `Plan actualizado a ${PLANS[editPlan]?.name}` })
-      await load()
-    }
+// ── Editar Tenant ─────────────────────────────────────────────────
+function EditTenantModal({ tenant, onClose, onDone }) {
+  const [form,   setForm]   = React.useState({ name:tenant.name, owner_name:tenant.owner_name||'', owner_email:tenant.owner_email||'', owner_phone:tenant.owner_phone||'', monthly_fee:tenant.monthly_fee||0, status:tenant.status||'active', notes:tenant.notes||'' })
+  const [saving, setSaving] = React.useState(false)
+  const [error,  setError]  = React.useState('')
+  async function handleSave(e) {
+    e.preventDefault(); setSaving(true); setError('')
+    try { await updateTenant(tenant.id, form); onDone() }
+    catch(e){ setError(e.message) }
     setSaving(false)
   }
+  return (
+    <Modal title={`Editar: ${tenant.name}`} onClose={onClose}>
+      {error && <Alert>{error}</Alert>}
+      <form onSubmit={handleSave} style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        <Field label="Nombre *" style={{gridColumn:'1/-1'}}>
+          <input style={inp} required value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+        </Field>
+        <Field label="Nombre del dueño">
+          <input style={inp} value={form.owner_name} onChange={e=>setForm(f=>({...f,owner_name:e.target.value}))} />
+        </Field>
+        <Field label="Email del dueño">
+          <input style={inp} type="email" value={form.owner_email} onChange={e=>setForm(f=>({...f,owner_email:e.target.value}))} />
+        </Field>
+        <Field label="Teléfono">
+          <input style={inp} value={form.owner_phone} onChange={e=>setForm(f=>({...f,owner_phone:e.target.value}))} />
+        </Field>
+        <Field label="Fee mensual (€)">
+          <input style={inp} type="number" value={form.monthly_fee} onChange={e=>setForm(f=>({...f,monthly_fee:Number(e.target.value)}))} />
+        </Field>
+        <Field label="Estado" style={{gridColumn:'1/-1'}}>
+          <select style={inp} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
+            <option value="active">Activo</option>
+            <option value="suspended">Suspendido</option>
+            <option value="archived">Archivado</option>
+            <option value="draft">Borrador</option>
+          </select>
+        </Field>
+        <Field label="Notas" style={{gridColumn:'1/-1'}}>
+          <textarea style={{...inp,height:80,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} />
+        </Field>
+        <div style={{gridColumn:'1/-1',display:'flex',gap:8}}>
+          <Btn type="submit" disabled={saving}>{saving?'Guardando…':'Guardar cambios'}</Btn>
+          <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+        </div>
+      </form>
+    </Modal>
+  )
+}
 
-  function toggleOverride(feature) {
-    const current = overrides[feature]
-    if (current === undefined) {
-      // No override → bloquear explícitamente aunque el plan lo incluya
-      setOverrides(o => ({ ...o, [feature]: false }))
-    } else if (current === false) {
-      // Bloqueado → desbloquear explícitamente aunque el plan no lo incluya
-      setOverrides(o => ({ ...o, [feature]: true }))
-    } else {
-      // Desbloqueado → quitar override (vuelve al plan)
-      const next = { ...overrides }
-      delete next[feature]
-      setOverrides(next)
-    }
-  }
+// ══════════════════════════════════════════════════════════════════
+// STORES TAB
+// ══════════════════════════════════════════════════════════════════
+function StoresTab() {
+  const [stores,   setStores]   = React.useState([])
+  const [tenants,  setTenants]  = React.useState([])
+  const [loading,  setLoading]  = React.useState(true)
+  const [search,   setSearch]   = React.useState('')
+  const [tenantF,  setTenantF]  = React.useState('all')
 
-  function featureState(feature) {
-    if (overrides[feature] === true)  return 'unlocked'   // verde: desbloqueado manualmente
-    if (overrides[feature] === false) return 'locked'     // rojo: bloqueado manualmente
-    return planHasFeature(editPlan, feature) ? 'plan' : 'off' // plan o no incluido
-  }
+  React.useEffect(()=>{
+    Promise.all([listStores(), listTenants()])
+      .then(([ss,ts])=>{ setStores(Array.isArray(ss)?ss:[]); setTenants(Array.isArray(ts)?ts:[]) })
+      .finally(()=>setLoading(false))
+  },[])
 
-  const FEAT_GROUPS = [
-    { label: '🛒 Menú y pedidos',  feats: [FEATURES.MENU_PUBLIC, FEATURES.MENU_CUSTOM_STYLE, FEATURES.MENU_CUSTOM_THEME, FEATURES.ORDERS, FEATURES.ORDERS_REALTIME] },
-    { label: '📦 Operaciones',     feats: [FEATURES.KITCHEN_PANEL, FEATURES.RIDERS_PANEL, FEATURES.STOCK, FEATURES.FINANCE] },
-    { label: '📣 Marketing',       feats: [FEATURES.COUPONS, FEATURES.LOYALTY, FEATURES.AFFILIATES, FEATURES.REVIEWS] },
-    { label: '🤖 Chatbot',         feats: [FEATURES.CHATBOT_BASIC, FEATURES.CHATBOT_AI, FEATURES.CHATBOT_PORTABLE] },
-    { label: '📊 Analytics',       feats: [FEATURES.ANALYTICS_BASIC, FEATURES.ANALYTICS_FULL] },
-  ]
-
-  const STATE_META = {
-    unlocked: { icon: '✅', label: 'Desbloqueado (override)',  color: '#16a34a', bg: '#f0fdf4' },
-    locked:   { icon: '🔴', label: 'Bloqueado (override)',     color: '#dc2626', bg: '#fef2f2' },
-    plan:     { icon: '✓',  label: 'Incluido en plan',         color: '#2563eb', bg: '#eff6ff' },
-    off:      { icon: '—',  label: 'No incluido en este plan', color: '#9ca3af', bg: 'transparent' },
-  }
+  const visible=stores.filter(s=>{
+    const q=search.toLowerCase()
+    const m=!q||s.name?.toLowerCase().includes(q)||s.slug?.toLowerCase().includes(q)
+    const tf=tenantF==='all'||s.tenant_id===tenantF
+    return m&&tf
+  })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Gestión de planes</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>
-          Cambia el plan de cualquier tenant y activa/bloquea features individualmente.
-        </p>
+    <div style={{display:'grid',gap:20}}>
+      <SectionHeader title={`Tiendas (${stores.length})`} subtitle="Todas las tiendas de todos los tenants" />
+      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+        <input style={{...inp,width:220,flex:'none'}} placeholder="Buscar tienda…" value={search} onChange={e=>setSearch(e.target.value)} />
+        <select style={{...inp,width:'auto'}} value={tenantF} onChange={e=>setTenantF(e.target.value)}>
+          <option value="all">Todos los tenants</option>
+          {tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <span style={{fontSize:12,color:C.muted,alignSelf:'center'}}>{visible.length} resultado(s)</span>
       </div>
-
-      {/* Tarjetas de planes disponibles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-        {Object.values(PLANS).map(p => (
-          <div key={p.id} style={{
-            background: p.highlight ? `${p.color}08` : 'var(--color-background-primary)',
-            border: `1px solid ${p.highlight ? p.color : 'var(--color-border-tertiary)'}`,
-            borderRadius: 12, padding: '16px',
-            position: 'relative',
-          }}>
-            {p.highlight && (
-              <div style={{
-                position: 'absolute', top: -1, right: 12,
-                background: p.color, color: '#fff',
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: '0 0 8px 8px',
-              }}>POPULAR</div>
-            )}
-            <div style={{ fontSize: 26, marginBottom: 6 }}>{p.emoji}</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: p.color }}>{p.name}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, margin: '6px 0', letterSpacing: '-1px' }}>
-              {p.price === 0 ? 'Gratis' : `${p.price}€`}
-              {p.price > 0 && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--color-text-secondary)' }}>/mes</span>}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-              {p.description_items.slice(0, 3).map((it, i) => <div key={i}>· {it}</div>)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Grid2>
-        {/* Lista de tenants con su plan */}
-        <Card title="Tenants y planes activos" sub={`${rows.length} tenants`}>
-          {loading && <Empty icon="⏳" text="Cargando…" />}
-          {rows.map(row => {
-            const sub = row.tenant_subscriptions?.[0]
-            const p   = PLANS[sub?.plan_id] || PLANS.starter
-            const nStores = row.stores?.[0]?.count ?? 0
-            const hasOverrides = sub?.feature_overrides && Object.keys(sub.feature_overrides).length > 0
+      {loading?<div style={{textAlign:'center',padding:'3rem',color:C.muted}}>Cargando…</div>:(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+          {!visible.length&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:'3rem',color:C.muted}}>Sin resultados</div>}
+          {visible.map(s=>{
+            const niche=NICHES.find(n=>n.id===s.niche)||NICHES[NICHES.length-1]
+            const tenant=tenants.find(t=>t.id===s.tenant_id)
+            const branches=s.branches?.[0]?.count||s.branches_count||0
             return (
-              <div key={row.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0',
-                borderBottom: '1px solid var(--color-border-tertiary)', flexWrap: 'wrap',
-              }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 9, flexShrink: 0,
-                  background: `${p.color}15`, display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 18,
-                }}>{p.emoji}</div>
-                <div style={{ flex: 1, minWidth: 140 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{row.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                    {row.owner_email || 'sin email'} · {nStores} tienda{nStores !== 1 ? 's' : ''}
-                    {hasOverrides && <span style={{ color: '#f59e0b', marginLeft: 6 }}>⚡ overrides activos</span>}
+              <div key={s.id} style={{...card,padding:0}}>
+                <div style={{padding:'14px 16px',borderBottom:`1px solid ${C.border}`,display:'flex',gap:10,alignItems:'center'}}>
+                  <div style={{width:38,height:38,borderRadius:10,background:`${niche.color}14`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>{niche.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
+                    <div style={{fontSize:11,color:C.muted}}>/{s.slug}</div>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:600,padding:'3px 8px',borderRadius:20,background:s.status==='active'?'#f0fdf4':'#fef2f2',color:s.status==='active'?'#16a34a':'#dc2626'}}>{s.status==='active'?'Activa':'Inactiva'}</span>
+                </div>
+                <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:12,color:C.muted}}>🏢 {tenant?.name||'Sin tenant'} · 📍 {s.city||'Sin ciudad'}</div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    <Badge color={niche.color}>{niche.label}</Badge>
+                    {s.template_id&&<Badge color="#6366f1">{s.template_id}</Badge>}
+                  </div>
+                  <div style={{display:'flex',gap:6,marginTop:4}}>
+                    <Btn size="sm" variant="ghost" onClick={()=>window.open(`/s/${s.slug}/menu`,'_blank')}>Ver menú ↗</Btn>
                   </div>
                 </div>
-                <Badge color={p.color}>{p.emoji} {p.name}</Badge>
-                <StatusBadge status={row.status} />
-                <Btn size="sm" variant="indigo" onClick={() => openEditor(row)}>Editar plan</Btn>
               </div>
             )
           })}
-        </Card>
+        </div>
+      )}
+    </div>
+  )
+}
 
-        {/* Editor de plan */}
-        {selected ? (
-          <Card
-            title={`Editar: ${selected.name}`}
-            sub="Cambia plan y activa/bloquea features específicas"
-            action={<Btn size="sm" variant="ghost" onClick={() => setSelected(null)}>✕ Cerrar</Btn>}
-          >
-            {notice && <Alert type={notice.type}>{notice.msg}</Alert>}
+// ══════════════════════════════════════════════════════════════════
+// PLANS TAB
+// ══════════════════════════════════════════════════════════════════
+function PlansTab() {
+  const [tenants, setTenants] = React.useState([])
+  const [saving,  setSaving]  = React.useState({})
+  const [search,  setSearch]  = React.useState('')
 
-            <div style={{ marginBottom: 16 }}>
-              <Sel label="Plan activo" value={editPlan} onChange={e => setEditPlan(e.target.value)}>
-                {Object.values(PLANS).map(p => (
-                  <option key={p.id} value={p.id}>{p.emoji} {p.name} — {p.price === 0 ? 'Gratis' : `${p.price}€/mes`}</option>
+  React.useEffect(()=>{ listTenants().then(ts=>setTenants(Array.isArray(ts)?ts:[])) },[])
+
+  async function changePlan(tenantId, planId) {
+    setSaving(s=>({...s,[tenantId]:true}))
+    try { await updateTenant(tenantId, { plan_id: planId }); setTenants(ts=>ts.map(t=>t.id===tenantId?{...t,plan_id:planId}:t)) }
+    catch(e){ alert(e.message) }
+    setSaving(s=>({...s,[tenantId]:false}))
+  }
+
+  const PLAN_FEATURES = {
+    starter:    ['Menú digital','1 tienda','1 sede','Pedidos básicos'],
+    growth:     ['Todo Starter','5 tiendas','10 sedes','Staff ilimitado','Chatbot WhatsApp'],
+    pro:        ['Todo Growth','Tiendas ilimitadas','Analytics avanzado','API acceso','Personalización avanzada'],
+    enterprise: ['Todo Pro','SLA prioritario','Integración custom','Multi-idioma','Soporte dedicado'],
+  }
+
+  return (
+    <div style={{display:'grid',gap:24}}>
+      <SectionHeader title="Gestión de Planes" subtitle="Compara planes y asigna a cada tenant" />
+
+      {/* Comparison table */}
+      <div style={{...card}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${C.border}`,fontWeight:700,fontSize:15}}>Comparativa de planes</div>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{background:C.bg2}}>
+                <th style={{padding:'12px 16px',textAlign:'left',borderBottom:`1px solid ${C.border}`,fontWeight:600,fontSize:12,color:C.muted,textTransform:'uppercase',letterSpacing:'.05em'}}>Característica</th>
+                {Object.entries(PLAN_META).map(([id,pm])=>(
+                  <th key={id} style={{padding:'12px 16px',textAlign:'center',borderBottom:`1px solid ${C.border}`,borderLeft:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:20,marginBottom:4}}>{pm.icon}</div>
+                    <div style={{fontWeight:700,color:pm.color}}>{pm.label}</div>
+                    <div style={{fontSize:12,color:C.muted,fontWeight:400}}>{pm.price}/mes</div>
+                  </th>
                 ))}
-              </Sel>
-            </div>
-
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-              Feature overrides <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                (sobreescriben el plan)
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-secondary)' }}>
-              {Object.entries(STATE_META).map(([k, v]) => (
-                <span key={k}>{v.icon} {v.label}</span>
-              ))}
-            </div>
-
-            {FEAT_GROUPS.map(g => (
-              <div key={g.label} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{g.label}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {g.feats.map(f => {
-                    const state = featureState(f)
-                    const meta  = STATE_META[state]
-                    return (
-                      <button key={f} onClick={() => toggleOverride(f)} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
-                        border: `1px solid ${state !== 'off' ? meta.color + '40' : 'var(--color-border-tertiary)'}`,
-                        background: meta.bg, fontFamily: 'inherit', textAlign: 'left',
-                        transition: '.15s',
-                      }}>
-                        <span style={{ fontSize: 14 }}>{meta.icon}</span>
-                        <span style={{ fontSize: 12, flex: 1, color: state !== 'off' ? meta.color : 'var(--color-text-secondary)' }}>
-                          {FEATURE_LABELS[f] || f}
-                        </span>
-                        {(state === 'unlocked' || state === 'locked') && (
-                          <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>OVERRIDE</span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-
-            <Input label="Notas internas" value={notes}
-              onChange={e => setNotes(e.target.value)} placeholder="Descuento especial, etc." style={{ marginBottom: 14 }} />
-
-            <Btn disabled={saving} onClick={handleSave}>
-              {saving ? 'Guardando…' : '✓ Guardar cambios'}
-            </Btn>
-          </Card>
-        ) : (
-          <Card title="Editor de plan" sub="Selecciona un tenant para editar su plan">
-            <Empty icon="✏️" text="Haz clic en 'Editar plan' en un tenant para configurarlo." />
-          </Card>
-        )}
-      </Grid2>
-    </div>
-  )
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// TENANTS TAB
-// ══════════════════════════════════════════════════════════════════
-function TenantsTab() {
-  const [tenants,   setTenants]   = React.useState([])
-  const [loading,   setLoading]   = React.useState(true)
-  const [showForm,  setShowForm]  = React.useState(false)
-  const [error,     setError]     = React.useState('')
-  const [saving,    setSaving]    = React.useState(false)
-  const [form, setForm] = React.useState({ name: '', slug: '', owner_name: '', owner_email: '', owner_phone: '', notes: '', plan: 'growth' })
-
-  const load = async () => {
-    setLoading(true)
-    const { data } = await supabaseAuth.from('tenants')
-      .select('*, tenant_subscriptions(plan_id, status), stores(count)')
-      .order('created_at', { ascending: false })
-    setTenants(data || [])
-    setLoading(false)
-  }
-  React.useEffect(() => { load() }, [])
-
-  async function handleCreate(e) {
-    e.preventDefault(); setSaving(true); setError('')
-    try {
-      const { data: t, error: te } = await supabaseAuth.from('tenants')
-        .insert({ name: form.name, slug: form.slug, owner_name: form.owner_name, owner_email: form.owner_email, owner_phone: form.owner_phone, notes: form.notes, status: 'active', monthly_fee: 0 })
-        .select().single()
-      if (te) throw te
-      await supabaseAuth.from('tenant_subscriptions').insert({ tenant_id: t.id, plan_id: form.plan, status: 'active', current_period_end: new Date(Date.now() + 30 * 86400000).toISOString() })
-      setForm({ name: '', slug: '', owner_name: '', owner_email: '', owner_phone: '', notes: '', plan: 'growth' })
-      setShowForm(false)
-      load()
-    } catch (e) { setError(e.message) }
-    setSaving(false)
-  }
-
-  async function toggleStatus(t) {
-    const next = t.status === 'active' ? 'suspended' : 'active'
-    await supabaseAuth.from('tenants').update({ status: next }).eq('id', t.id)
-    setTenants(prev => prev.map(x => x.id === t.id ? { ...x, status: next } : x))
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Tenants ({tenants.length})</h2>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>Negocios clientes de la plataforma</p>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.values(PLAN_FEATURES)[0].map((_,i)=>{
+                const featuresByPlan=Object.entries(PLAN_FEATURES)
+                const row0=featuresByPlan[0][1][i]
+                return (
+                  <tr key={i}>
+                    <td style={{padding:'10px 16px',borderBottom:`1px solid ${C.border}`,color:C.muted,fontSize:13}}>{row0}</td>
+                    {featuresByPlan.map(([pid,feats])=>(
+                      <td key={pid} style={{padding:'10px 16px',textAlign:'center',borderBottom:`1px solid ${C.border}`,borderLeft:`1px solid ${C.border}`}}>
+                        {i<feats.length?<span style={{color:'#16a34a',fontSize:16}}>✓</span>:<span style={{color:C.border2,fontSize:16}}>—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-        <Btn onClick={() => setShowForm(s => !s)}>{showForm ? '✕ Cancelar' : '+ Nuevo tenant'}</Btn>
       </div>
 
-      {showForm && (
-        <Card title="Crear tenant">
-          {error && <Alert>{error}</Alert>}
-          <form onSubmit={handleCreate}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 12 }}>
-              <Input label="Nombre *" required value={form.name} onChange={e => { const n = e.target.value; setForm(f => ({ ...f, name: n, slug: f.slug || slugify(n) })) }} placeholder="Panadería Demo" />
-              <Input label="Slug *" required value={form.slug} onChange={e => setForm(f => ({ ...f, slug: slugify(e.target.value) }))} placeholder="panaderia-demo" />
-              <Input label="Nombre del dueño" value={form.owner_name} onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))} placeholder="Laura Morales" />
-              <Input label="Email" type="email" value={form.owner_email} onChange={e => setForm(f => ({ ...f, owner_email: e.target.value }))} placeholder="laura@negocio.com" />
-              <Input label="Teléfono" value={form.owner_phone} onChange={e => setForm(f => ({ ...f, owner_phone: e.target.value }))} placeholder="+34 600 000 000" />
-              <Sel label="Plan inicial" value={form.plan} onChange={e => setForm(f => ({ ...f, plan: e.target.value }))}>
-                {Object.values(PLANS).map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name} — {p.price === 0 ? 'Gratis' : `${p.price}€/mes`}</option>)}
-              </Sel>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Btn type="submit" disabled={saving}>{saving ? 'Creando…' : 'Crear tenant'}</Btn>
-              <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {loading ? <Empty icon="⏳" text="Cargando…" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {!tenants.length && <Empty icon="🏢" text="Sin tenants todavía." />}
-          {tenants.map(t => {
-            const sub = t.tenant_subscriptions?.[0]
-            const p   = PLANS[sub?.plan_id] || PLANS.starter
-            const n   = t.stores?.[0]?.count ?? 0
-            return (
-              <div key={t.id} style={{
-                background: 'var(--color-background-primary)',
-                border: '1px solid var(--color-border-tertiary)',
-                borderRadius: 12, padding: '14px 18px',
-                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-              }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `${p.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{p.emoji}</div>
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{t.owner_email || 'Sin email'} · {n} tienda{n !== 1 ? 's' : ''}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Badge color={p.color}>{p.emoji} {p.name}</Badge>
-                  <StatusBadge status={t.status} />
-                  <Btn size="sm" variant="ghost" onClick={() => toggleStatus(t)}>{t.status === 'active' ? 'Suspender' : 'Activar'}</Btn>
-                </div>
-              </div>
-            )
-          })}
+      {/* Per-tenant plan override */}
+      <div style={card}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontWeight:700,fontSize:15}}>Plan por tenant</span>
+          <input style={{...inp,width:200}} placeholder="Buscar tenant…" value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
-      )}
-    </div>
-  )
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// OWNERS TAB
-// ══════════════════════════════════════════════════════════════════
-function OwnersTab() {
-  const [tenants,  setTenants]  = React.useState([])
-  const [accounts, setAccounts] = React.useState([])
-  const [loading,  setLoading]  = React.useState(true)
-  const [showForm, setShowForm] = React.useState(false)
-  const [error,    setError]    = React.useState('')
-  const [success,  setSuccess]  = React.useState('')
-  const [saving,   setSaving]   = React.useState(false)
-  const [form, setForm] = React.useState({ tenant_id: '', role: 'tenant_owner', full_name: '', email: '', password: '' })
-
-  const load = React.useCallback(async () => {
-    setLoading(true)
-    const [ts, os] = await Promise.all([listTenants(), listOwnerAccounts()])
-    setTenants(Array.isArray(ts) ? ts : [])
-    setAccounts(Array.isArray(os) ? os : [])
-    setForm(f => ({ ...f, tenant_id: f.tenant_id || ts?.[0]?.id || '' }))
-    setLoading(false)
-  }, [])
-  React.useEffect(() => { load() }, [load])
-
-  async function handleCreate(e) {
-    e.preventDefault(); setSaving(true); setError(''); setSuccess('')
-    try {
-      await createOwnerAccount(form)
-      setSuccess(`Cuenta creada para ${form.email}`)
-      setForm(f => ({ ...f, full_name: '', email: '', password: '' }))
-      setShowForm(false); load()
-    } catch (e) { setError(e.message) }
-    setSaving(false)
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Dueños ({accounts.length})</h2>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>Cuentas con acceso al panel del negocio</p>
-        </div>
-        <Btn onClick={() => setShowForm(s => !s)}>{showForm ? '✕ Cancelar' : '+ Nueva cuenta'}</Btn>
-      </div>
-
-      {showForm && (
-        <Card title="Crear cuenta de dueño">
-          {error   && <Alert>{error}</Alert>}
-          {success && <Alert type="success">{success}</Alert>}
-          <form onSubmit={handleCreate}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 12 }}>
-              <Sel label="Tenant *" required value={form.tenant_id} onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}>
-                <option value="">Selecciona un tenant</option>
-                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </Sel>
-              <Sel label="Rol" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                <option value="tenant_owner">tenant_owner — Dueño principal</option>
-                <option value="tenant_admin">tenant_admin — Admin secundario</option>
-              </Sel>
-              <Input label="Nombre completo" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="María García" />
-              <Input label="Email *" type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="dueno@marca.com" />
-              <Input label="Password *" required value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Mínimo 8 caracteres" />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Btn type="submit" disabled={saving}>{saving ? 'Creando…' : 'Crear cuenta'}</Btn>
-              <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      <Card title="Cuentas activas" sub="Cada fila = acceso al panel /tenant/admin">
-        {loading && <Empty icon="⏳" text="Cargando…" />}
-        {!loading && !accounts.length && <Empty icon="👤" text="Sin cuentas de dueños todavía." />}
-        {accounts.map(a => (
-          <div key={a.membership_id || a.id} style={{
-            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0',
-            borderBottom: '1px solid var(--color-border-tertiary)', flexWrap: 'wrap',
-          }}>
-            <div style={{ width: 36, height: 36, borderRadius: 9, background: '#f59e0b20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#f59e0b', flexShrink: 0 }}>
-              {(a.full_name || a.role || '?').slice(0, 2).toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 150 }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{a.full_name || a.user_id}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{a.tenant_name} · {a.role}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <StatusBadge status={a.is_active ? 'active' : 'suspended'} />
-              <Btn size="sm" variant="ghost" onClick={async () => { await updateOwnerAccount(a.membership_id, { is_active: !a.is_active }); load() }}>
-                {a.is_active ? 'Pausar' : 'Activar'}
-              </Btn>
-              <Btn size="sm" variant="ghost" onClick={async () => { const pw = window.prompt(`Nueva password para ${a.full_name || a.role}`); if (pw) { await updateOwnerAccount(a.membership_id, { password: pw }); load() } }}>
-                Reset PW
-              </Btn>
-            </div>
-          </div>
-        ))}
-      </Card>
-    </div>
-  )
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// PIPELINE TAB
-// ══════════════════════════════════════════════════════════════════
-const PIPELINE_STAGES = ['pending','contacted','demo_scheduled','onboarding','converted','rejected','ghosted']
-
-function PipelineTab() {
-  const [requests, setRequests] = React.useState([])
-  const [loading,  setLoading]  = React.useState(true)
-  const [filter,   setFilter]   = React.useState('pending')
-  const [busy,     setBusy]     = React.useState(null)
-
-  React.useEffect(() => {
-    supabaseAuth.from('landing_requests').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => { setRequests(data || []); setLoading(false) })
-  }, [])
-
-  async function advance(id, status) {
-    setBusy(id)
-    const patch = { status, updated_at: new Date().toISOString() }
-    if (status === 'contacted') patch.contacted_at = new Date().toISOString()
-    if (status === 'converted') patch.converted_at = new Date().toISOString()
-    await supabaseAuth.from('landing_requests').update(patch).eq('id', id)
-    setRequests(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
-    setBusy(null)
-  }
-
-  async function sendInvite(r) {
-    if (!window.confirm(`¿Enviar invitación a ${r.email}?`)) return
-    setBusy(r.id)
-    try {
-      await inviteLandingRequest(r.id, `${window.location.origin}/onboarding`)
-      setRequests(rs => rs.map(x => x.id === r.id ? { ...x, status: 'onboarding' } : x))
-    } catch (e) { window.alert('Error: ' + e.message) }
-    setBusy(null)
-  }
-
-  const byStatus = requests.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a }, {})
-  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Pipeline de solicitudes</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>Leads del landing page ordenados por estado</p>
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {['all', ...PIPELINE_STAGES].map(s => {
-          const m = STATUS_META[s] || { label: 'Todos', color: '#64748b' }
-          const count = s === 'all' ? requests.length : (byStatus[s] || 0)
+        {tenants.filter(t=>!search||t.name?.toLowerCase().includes(search.toLowerCase())).map(t=>{
+          const pm=PLAN_META[t.plan_id]||PLAN_META.starter
           return (
-            <button key={s} onClick={() => setFilter(s)} style={{
-              padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1px solid ${filter === s ? m.color : 'var(--color-border-secondary)'}`,
-              background: filter === s ? `${m.color}15` : 'transparent',
-              color: filter === s ? m.color : 'var(--color-text-secondary)',
-              fontWeight: filter === s ? 600 : 400,
-            }}>{s === 'all' ? 'Todos' : m.label} {count > 0 ? `(${count})` : ''}</button>
+            <div key={t.id} style={{padding:'13px 20px',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+              <div style={{flex:1,minWidth:140}}>
+                <div style={{fontWeight:600,fontSize:14}}>{t.name}</div>
+                <div style={{fontSize:11,color:C.muted}}>{t.owner_email||'Sin email'}</div>
+              </div>
+              <Badge color={pm.color}>{pm.icon} Plan actual: {pm.label}</Badge>
+              <div style={{display:'flex',gap:6}}>
+                {Object.entries(PLAN_META).map(([pid,pm2])=>(
+                  <button key={pid} onClick={()=>changePlan(t.id,pid)} disabled={saving[t.id]||t.plan_id===pid} style={{
+                    padding:'5px 10px',borderRadius:8,fontSize:11,fontWeight:600,cursor:t.plan_id===pid?'default':'pointer',fontFamily:'inherit',
+                    border:`2px solid ${t.plan_id===pid?pm2.color:C.border2}`,
+                    background:t.plan_id===pid?`${pm2.color}14`:'transparent',
+                    color:t.plan_id===pid?pm2.color:C.muted,transition:'.12s',
+                  }}>{pm2.icon} {pm2.label}</button>
+                ))}
+              </div>
+            </div>
           )
         })}
       </div>
-      {loading && <Empty icon="⏳" text="Cargando…" />}
-      {!loading && !filtered.length && <Empty icon="📭" text="Sin solicitudes en este estado." />}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map(r => (
-          <div key={r.id} style={{
-            background: 'var(--color-background-primary)',
-            border: '1px solid var(--color-border-tertiary)',
-            borderRadius: 12, padding: '16px 18px',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{r.full_name}</div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
-                  {r.email} {r.phone && `· ${r.phone}`} {r.business_name && `· ${r.business_name}`} {r.city && `· ${r.city}`}
-                </div>
-                {r.message && (
-                  <div style={{ fontSize: 12, marginTop: 8, padding: '8px 12px', background: 'var(--color-background-secondary)', borderRadius: 8, color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-                    "{r.message}"
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                <StatusBadge status={r.status} />
-                <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{new Date(r.created_at).toLocaleDateString('es-ES')}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-              {r.status === 'pending' && <Btn size="sm" onClick={() => advance(r.id, 'contacted')} disabled={busy === r.id}>Marcar contactado</Btn>}
-              {['contacted', 'demo_scheduled'].includes(r.status) && <Btn size="sm" variant="success" onClick={() => sendInvite(r)} disabled={busy === r.id}>✉️ Enviar invitación</Btn>}
-              {!['converted', 'rejected'].includes(r.status) && <Btn size="sm" variant="danger" onClick={() => advance(r.id, 'rejected')} disabled={busy === r.id}>Rechazar</Btn>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-
-// ══════════════════════════════════════════════════════════════════
-// STORES TAB — Super Admin puede crear tiendas directamente
-// ══════════════════════════════════════════════════════════════════
-function StoresTab() {
-  const [tenants,  setTenants]  = React.useState([])
-  const [stores,   setStores]   = React.useState([])
-  const [loading,  setLoading]  = React.useState(false)
-  const [showForm, setShowForm] = React.useState(false)
-  const [error,    setError]    = React.useState('')
-  const [success,  setSuccess]  = React.useState('')
-  const [saving,   setSaving]   = React.useState(false)
-  const [form, setForm] = React.useState({ tenant_id: '', name: '', slug: '', niche: 'restaurant', city: '' })
-
-  const load = async () => {
-    setLoading(true)
-    const [ts, ss] = await Promise.all([listTenants(), listStores()])
-    setTenants(Array.isArray(ts) ? ts : [])
-    setStores(Array.isArray(ss) ? ss : [])
-    setForm(f => ({ ...f, tenant_id: f.tenant_id || ts?.[0]?.id || '' }))
-    setLoading(false)
-  }
-  React.useEffect(() => { load() }, [])
-
-  async function handleCreate(e) {
-    e.preventDefault(); setSaving(true); setError(''); setSuccess('')
-    try {
-      const niche = NICHES.find(n => n.id === form.niche) || NICHES[0]
-      await createStore({
-        id: form.slug, slug: form.slug, name: form.name,
-        tenant_id: form.tenant_id, niche: form.niche,
-        business_type: niche.template, template_id: niche.template,
-        city: form.city, status: 'active', public_visible: true, theme_tokens: {},
-      })
-      setSuccess(`Tienda "${form.name}" creada. Slug público: /s/${form.slug}/menu`)
-      setForm(f => ({ ...NICHES[0], tenant_id: f.tenant_id, name: '', slug: '', city: '', niche: 'restaurant' }))
-      setShowForm(false); load()
-    } catch (e) { setError(e.message) }
-    setSaving(false)
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Tiendas ({stores.length})</h2>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>El super admin puede crear tiendas para cualquier tenant</p>
-        </div>
-        <Btn onClick={() => setShowForm(s => !s)}>{showForm ? '✕ Cancelar' : '+ Crear tienda'}</Btn>
-      </div>
-
-      {showForm && (
-        <Card title="Crear tienda (desde Super Admin)">
-          {error   && <Alert>{error}</Alert>}
-          {success && <Alert type="success">✅ {success}</Alert>}
-          <form onSubmit={handleCreate}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 12 }}>
-              <Sel label="Tenant *" required value={form.tenant_id} onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}>
-                <option value="">Selecciona tenant</option>
-                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </Sel>
-              <Input label="Nombre *" required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: f.slug || slugify(e.target.value) }))} placeholder="Pizza Roma" />
-              <Input label="Slug (URL) *" required value={form.slug} onChange={e => setForm(f => ({ ...f, slug: slugify(e.target.value) }))} placeholder="pizza-roma" />
-              <Sel label="Nicho" value={form.niche} onChange={e => setForm(f => ({ ...f, niche: e.target.value }))}>
-                {NICHES.map(n => <option key={n.id} value={n.id}>{n.icon} {n.label}</option>)}
-              </Sel>
-              <Input label="Ciudad" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="Madrid" />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Btn type="submit" disabled={saving || !form.tenant_id}>{saving ? 'Creando…' : 'Crear tienda'}</Btn>
-              <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {loading ? <Empty icon="⏳" text="Cargando…" /> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-          {!stores.length && <Empty icon="🏪" text="Sin tiendas todavía." />}
-          {stores.map(s => {
-            const niche = NICHES.find(n => n.id === s.niche || n.template === s.business_type) || NICHES[NICHES.length - 1]
-            return (
-              <div key={s.id} style={{
-                background: 'var(--color-background-primary)',
-                border: '1px solid var(--color-border-tertiary)',
-                borderRadius: 12, padding: '14px 16px',
-              }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: '#6366f115', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>{niche.icon}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>/{s.slug} · {s.city || 'Sin ciudad'}</div>
-                  </div>
-                  <StatusBadge status={s.status || 'draft'} />
-                </div>
-                <Btn size="sm" variant="ghost" onClick={() => window.open(`/s/${s.slug}/menu`, '_blank')}>Ver menú ↗</Btn>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

@@ -11,7 +11,7 @@
  * Para operaciones que requieren service_role (crear usuarios Auth),
  * usa `backofficeApi.js` que llama al endpoint Flask en Vercel.
  */
-import { supabaseAuth } from '../../legacy/lib/supabase'
+import { supabaseAuth } from '../supabase/client'
 import { readCurrentSupabaseAccessToken } from '../../legacy/lib/appSession'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
