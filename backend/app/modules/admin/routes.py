@@ -206,7 +206,7 @@ def invite_tenant_owner(tenant_id):
     redirect_to = _clean_text(body.get("redirect_to") or "")
     if not redirect_to:
         origin = _clean_text(request.headers.get("Origin") or "")
-        redirect_to = f"{origin}/tenant/login" if origin else None
+        redirect_to = f"{origin}/login" if origin else None
 
     # ¿El usuario ya existe en Auth?
     existing_auth = None
@@ -574,7 +574,7 @@ def invite_pipeline_request(request_id):
     redirect_to = _clean_text(request.json.get("redirectTo") if request.is_json else "") or None
     if not redirect_to:
         frontend_origin = _clean_text(request.headers.get("Origin")) or None
-        redirect_to = f"{frontend_origin}/onboarding" if frontend_origin else None
+        redirect_to = f"{frontend_origin}/login" if frontend_origin else None
 
     existing_user = None
     try:

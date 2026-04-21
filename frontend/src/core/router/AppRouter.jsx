@@ -100,33 +100,9 @@ function SessionErrorScreen({ authError, retryLoadMembership }) {
 
 // ── Punto de entrada en "/" ───────────────────────────────────────
 function HomeEntry() {
-  const { loading, isAuthenticated, role, tenantId, authError, retryLoadMembership } = useAuth()
-  const [checkingStores, setCheckingStores] = React.useState(false)
-  const [storeCheckDone, setStoreCheckDone] = React.useState(false)
-  const [hasStores, setHasStores] = React.useState(null)
+  const { loading, isAuthenticated, role, authError, retryLoadMembership } = useAuth()
 
-  // Para tenant_owner/admin: verificar si ya tiene tiendas creadas
-  const needsStoreCheck = isAuthenticated && !loading && ['tenant_owner', 'tenant_admin'].includes(role)
-
-  React.useEffect(() => {
-    if (!needsStoreCheck || storeCheckDone) return
-    if (!tenantId) { setHasStores(false); setStoreCheckDone(true); return }
-
-    setCheckingStores(true)
-    import('../../shared/lib/supabaseApi').then(({ listStores }) =>
-      listStores(tenantId)
-    ).then(stores => {
-      setHasStores(Array.isArray(stores) && stores.length > 0)
-    }).catch(() => {
-      // Si falla la consulta asumimos que no tiene tiendas → onboarding
-      setHasStores(false)
-    }).finally(() => {
-      setCheckingStores(false)
-      setStoreCheckDone(true)
-    })
-  }, [needsStoreCheck, tenantId, storeCheckDone])
-
-  if (loading || checkingStores) {
+  if (loading) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center',
@@ -139,13 +115,6 @@ function HomeEntry() {
 
   // Autenticado con rol válido
   if (isAuthenticated && role && role !== 'anonymous') {
-    // tenant_owner/admin sin tiendas → onboarding obligatorio
-    if (needsStoreCheck && storeCheckDone && hasStores === false) {
-      return <Navigate to="/onboarding" replace />
-    }
-    // Esperar a que termine el check antes de redirigir
-    if (needsStoreCheck && !storeCheckDone) return null
-    // todos los demás (o tenant con tiendas) → su panel normal
     return <Navigate to={ROLE_HOME[role] || '/tenant/admin'} replace />
   }
 

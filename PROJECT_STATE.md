@@ -2,10 +2,66 @@
 
 ## Fecha
 
+- 2026-04-21
 - 2026-04-20
 - 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-21 - pipeline de admision y acceso inicial del dueno
+
+### Implementado
+
+- `frontend/src/modules/admin/components/SuperAdminPipelineTab.jsx`
+  - El flujo de admision deja de intentar crear la primera tienda del dueno desde Super Admin.
+  - Ahora la activacion real crea el tenant y admite al dueno con invitacion de acceso.
+  - El lead pasa a `onboarding` cuando ya existe acceso real al panel del dueno.
+  - Se eliminaron acciones secundarias que invitaban sin crear tenant ni membresia.
+- `frontend/src/core/router/AppRouter.jsx`
+  - Se elimina el bloqueo que forzaba a `tenant_owner` y `tenant_admin` a onboarding antes de entrar al panel.
+  - El dueno ya puede entrar a `/tenant/admin` aunque todavia no tenga tiendas.
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - Se elimina la redireccion automatica a `/onboarding` cuando el tenant no tiene tiendas.
+  - El dueno usa el empty state del panel para crear su primera tienda desde su propia cuenta.
+- `frontend/src/shared/lib/backendBase.js`
+  - Nueva resolucion canonica del backend:
+    - desarrollo local -> rutas proxied sin prefijo
+    - produccion same-domain -> `/api/backend`
+- `frontend/src/shared/lib/supabaseApi.js` y `frontend/src/modules/admin/pages/OnboardingPage.jsx`
+  - Ambos usan la resolucion canonica del backend para no romper entre local y Vercel.
+- `frontend/src/modules/admin/lib/pipelineAdmission.js`
+  - Centraliza la ruta real de login del dueno (`/login`) y el estado posterior a la admision.
+- `api/index.py`
+  - Se agregan endpoints serverless que el frontend ya esperaba para Vercel:
+    - `GET/POST/PATCH /api/backend/admin/tenants`
+    - `POST /api/backend/admin/tenants/<tenant_id>/invite-owner`
+    - `POST /api/backend/tenant/stores`
+    - `PATCH /api/backend/tenant/stores/<store_id>`
+    - `POST /api/backend/tenant/branches`
+  - Se corrige el redirect por defecto de invitaciones hacia `/login`.
+- `backend/app/modules/admin/routes.py`
+  - Se alinea el redirect por defecto de invitacion con `/login` para el backend Flask local.
+
+### Decision de arquitectura
+
+- El pipeline comercial no debe "simular conversion" creando estados sin acceso funcional.
+- La admision valida del lead es:
+  - tenant creado
+  - dueno con membresia activa o invitacion valida
+  - entrada posible al panel del dueno
+- La creacion de tiendas pertenece al panel del dueno, no al Super Admin.
+
+### Validacion
+
+- `node --test frontend/tests/backendBase.test.mjs`
+- `node --test frontend/tests/pipelineAdmission.test.mjs`
+- `python -m py_compile api/index.py backend/app/modules/admin/routes.py`
+- `npm run build` en `frontend`
+
+### Nota de schema
+
+- No hubo cambios de DDL ni de RLS en esta iteracion.
+- `database_schema.sql` no requirio actualizacion.
 
 ## Iteracion 2026-04-20 - Schema/RLS minimo alineado con el frontend
 

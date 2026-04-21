@@ -1,5 +1,5 @@
 import React from 'react'
-import { supabaseAuth } from '../../legacy/lib/supabase'
+import { supabaseAuth } from '../../shared/supabase/client'
 import {
   loadStoredSession,
   clearStoredSession,

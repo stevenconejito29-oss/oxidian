@@ -206,14 +206,6 @@ export default function TenantAdminPage() {
 
   const { can, canCreateMore, plan, FEATURES: F } = usePlan()
 
-  // Primer login sin tiendas → redirigir al onboarding
-  React.useEffect(() => {
-    if (!loading && tenantId && stores.length === 0 && !error) {
-      // Solo redirigir después de que la carga haya terminado y confirmado 0 tiendas
-      navigate('/onboarding', { replace: true })
-    }
-  }, [loading, tenantId, stores.length, error, navigate])
-
   if (!tenantId) return (
     <div style={{ padding:24 }}>
       <Alert>Esta cuenta no tiene tenant asignado. Contacta al administrador.</Alert>

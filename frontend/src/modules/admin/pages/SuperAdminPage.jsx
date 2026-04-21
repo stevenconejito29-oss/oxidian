@@ -18,6 +18,7 @@ import { PLANS, FEATURES, FEATURE_LABELS, planHasFeature } from '../../../shared
 import ChatbotAuthManager from '../components/ChatbotAuthManager'
 import SuperAdminPipelineTab from '../components/SuperAdminPipelineTab'
 import { getPendingLandingRequests } from '../lib/superAdminPipeline'
+import { getOwnerInviteRedirectPath } from '../lib/pipelineAdmission'
 
 // ─── helpers ─────────────────────────────────────────────────────
 function slugify(v) {
@@ -403,12 +404,12 @@ function TenantWizard({ onClose, onDone }) {
     e.preventDefault(); setError(''); setSaving(true)
     try {
       if (invite.email) {
-        const res = await inviteTenantOwner(createdTenantId, {
-          email:       invite.email,
-          full_name:   invite.full_name,
-          role:        'tenant_owner',
-          redirect_to: `${window.location.origin}/tenant/login`,
-        })
+      const res = await inviteTenantOwner(createdTenantId, {
+        email:       invite.email,
+        full_name:   invite.full_name,
+        role:        'tenant_owner',
+        redirect_to: getOwnerInviteRedirectPath(window.location.origin),
+      })
         setInviteResult(res)
       }
       setStep(3)
@@ -649,7 +650,7 @@ function InviteOwnerModal({ tenant, onClose }) {
         email:       form.email,
         full_name:   form.full_name,
         role:        'tenant_owner',
-        redirect_to: `${window.location.origin}/tenant/login`,
+        redirect_to: getOwnerInviteRedirectPath(window.location.origin),
       })
       setResult(res)
     } catch(e){ setError(e.message) }

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
-import { supabaseAuth } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../shared/supabase/client'
 import { useAuth } from '../../../core/providers/AuthProvider'
 
 export default function LoginPage() {

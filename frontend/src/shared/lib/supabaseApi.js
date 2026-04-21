@@ -13,13 +13,12 @@
  */
 import { supabaseAuth } from '../supabase/client'
 import { readCurrentSupabaseAccessToken } from '../../legacy/lib/appSession'
-
-const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
+import { buildBackendUrl } from './backendBase'
 
 // ── Helper para llamadas al Flask backend (solo creación de usuarios) ──
 async function _backendFetch(method, path, body) {
   const token = readCurrentSupabaseAccessToken()
-  const url   = `${BACKEND}${path}`
+  const url   = buildBackendUrl(path)
   const res   = await fetch(url, {
     method,
     headers: {
@@ -323,7 +322,7 @@ export async function getTenantPlan(tenantId) {
     .select('plan_id, status')
     .eq('tenant_id', tenantId)
     .maybeSingle()
-  return data?.plan_id || 'growth'
+  return data?.plan_id || 'starter'
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -332,5 +331,5 @@ export async function getTenantPlan(tenantId) {
 
 export function getChatbotDownloadUrl(branchId) {
   const token = readCurrentSupabaseAccessToken()
-  return `${BACKEND}/api/backend/admin/chatbot/download/${branchId}?token=${encodeURIComponent(token || '')}`
+  return `${buildBackendUrl(`/admin/chatbot/download/${branchId}`)}?token=${encodeURIComponent(token || '')}`
 }

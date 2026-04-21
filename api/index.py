@@ -88,6 +88,30 @@ def _require_super_admin():
         return None, None, jsonify({"error": "Super admin required"}), 403
     return uid, m, None, None
 
+def _require_tenant_manager():
+    uid, m = _require_auth()
+    if not m or m.get("role") not in ("super_admin", "tenant_owner", "tenant_admin"):
+        return None, None, jsonify({"error": "Tenant manager required"}), 403
+    return uid, m, None, None
+
+def _resolve_tenant_id_for_actor(user_id, membership, requested_tenant_id=None):
+    if membership and membership.get("role") == "super_admin":
+        return requested_tenant_id
+    if membership and membership.get("tenant_id"):
+        return membership.get("tenant_id")
+    if not user_id:
+        return None
+    try:
+        row = _sb().table("user_memberships") \
+            .select("tenant_id") \
+            .eq("user_id", user_id) \
+            .eq("is_active", True) \
+            .in_("role", ["tenant_owner", "tenant_admin"]) \
+            .limit(1).maybe_single().execute().data
+        return row.get("tenant_id") if row else None
+    except Exception:
+        return None
+
 def _err(msg, code=400):
     return jsonify({"error": msg}), code
 
@@ -246,6 +270,223 @@ def update_owner_account(member_id):
         return _err(str(e), 500)
 
 
+@app.route("/api/backend/admin/tenants", methods=["GET"])
+def list_tenants():
+    uid, m, err, code = _require_super_admin()
+    if err:
+        return err, code
+    try:
+        sb = _sb()
+        res = sb.table("tenants").select(
+            "*, tenant_subscriptions(plan_id, status, current_period_end)"
+        ).order("created_at", desc=True).execute()
+        rows = []
+        for tenant in (res.data or []):
+            subs = tenant.pop("tenant_subscriptions", None) or []
+            if isinstance(subs, list):
+                sub = subs[0] if subs else {}
+            else:
+                sub = subs or {}
+            tenant["plan_id"] = sub.get("plan_id", "starter")
+            tenant["subscription_status"] = sub.get("status")
+            rows.append(tenant)
+        return jsonify(rows), 200
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/admin/tenants", methods=["POST"])
+def create_tenant():
+    uid, m, err, code = _require_super_admin()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    if not body.get("slug") or not body.get("name"):
+        return _err("slug y name son requeridos")
+    plan_id = str(body.get("plan_id") or "growth").strip() or "growth"
+    payload = {
+        "slug": str(body.get("slug", "")).strip().lower(),
+        "name": str(body.get("name", "")).strip(),
+        "owner_name": str(body.get("owner_name", "")).strip() or None,
+        "owner_email": str(body.get("owner_email", "")).strip().lower() or None,
+        "owner_phone": str(body.get("owner_phone", "")).strip() or None,
+        "billing_email": str(body.get("billing_email", "")).strip().lower() or None,
+        "monthly_fee": float(body.get("monthly_fee", 0) or 0),
+        "notes": str(body.get("notes", "")).strip() or None,
+        "status": str(body.get("status", "active")).strip() or "active",
+    }
+    try:
+        sb = _sb()
+        res = sb.table("tenants").insert(payload).execute()
+        tenant = (res.data or [{}])[0]
+        if tenant.get("id"):
+            try:
+                sb.rpc("change_tenant_plan", {
+                    "p_tenant_id": tenant["id"],
+                    "p_plan_id": plan_id,
+                    "p_overrides": {},
+                    "p_notes": "Creado por Super Admin",
+                }).execute()
+            except Exception:
+                upsert_payload = {
+                    "tenant_id": tenant["id"],
+                    "plan_id": plan_id,
+                    "status": "active",
+                    "feature_overrides": {},
+                    "notes": "Creado por Super Admin",
+                    "current_period_end": (datetime.now(timezone.utc)).isoformat(),
+                }
+                sb.table("tenant_subscriptions").upsert(
+                    upsert_payload, on_conflict="tenant_id"
+                ).execute()
+            tenant["plan_id"] = plan_id
+        return jsonify(tenant), 201
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/admin/tenants/<tenant_id>", methods=["PATCH"])
+def patch_tenant(tenant_id):
+    uid, m, err, code = _require_super_admin()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    allowed = [
+        "name", "owner_name", "owner_email", "owner_phone",
+        "billing_email", "monthly_fee", "notes", "status",
+    ]
+    patch = {k: v for k, v in body.items() if k in allowed}
+    plan_id = body.get("plan_id")
+    try:
+        sb = _sb()
+        result = {}
+        if patch:
+          res = sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+          result = (res.data or [{}])[0]
+        if plan_id:
+            try:
+                sb.rpc("change_tenant_plan", {
+                    "p_tenant_id": tenant_id,
+                    "p_plan_id": plan_id,
+                    "p_overrides": {},
+                    "p_notes": None,
+                }).execute()
+            except Exception:
+                sb.table("tenant_subscriptions").upsert({
+                    "tenant_id": tenant_id,
+                    "plan_id": plan_id,
+                    "status": "active",
+                    "feature_overrides": {},
+                    "notes": None,
+                    "current_period_end": datetime.now(timezone.utc).isoformat(),
+                }, on_conflict="tenant_id").execute()
+            result["plan_id"] = plan_id
+        if not patch and not plan_id:
+            return _err("Sin campos validos")
+        return jsonify(result), 200
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/admin/tenants/<tenant_id>/invite-owner", methods=["POST"])
+def invite_owner_to_tenant(tenant_id):
+    uid, m, err, code = _require_super_admin()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    email = str(body.get("email", "")).strip().lower()
+    full_name = str(body.get("full_name", "")).strip()
+    role = str(body.get("role", "tenant_owner")).strip()
+    if role not in ("tenant_owner", "tenant_admin"):
+        return _err("Rol invalido")
+    if not email:
+        return _err("email requerido")
+    try:
+        sb = _sb()
+        tenant = sb.table("tenants").select("id,name").eq("id", tenant_id).maybe_single().execute().data
+        if not tenant:
+            return _err("Tenant no encontrado", 404)
+
+        redirect_to = body.get("redirect_to") or body.get("redirectTo")
+        if not redirect_to:
+            origin = str(request.headers.get("Origin", "")).strip()
+            redirect_to = f"{origin}/login" if origin else "/login"
+
+        existing = None
+        try:
+            users = sb.auth.admin.list_users()
+            existing = next((u for u in users if (u.email or "").lower() == email), None)
+        except Exception:
+            existing = None
+
+        if existing:
+            metadata = dict(existing.user_metadata or {})
+            if full_name:
+                metadata["full_name"] = full_name
+            sb.auth.admin.update_user_by_id(existing.id, {"user_metadata": metadata})
+            delete_q = sb.table("user_memberships").delete() \
+                .eq("user_id", existing.id).eq("role", role).eq("tenant_id", tenant_id)
+            delete_q.execute()
+            mem_res = sb.table("user_memberships").insert({
+                "user_id": existing.id,
+                "role": role,
+                "tenant_id": tenant_id,
+                "store_id": None,
+                "branch_id": None,
+                "is_active": True,
+                "metadata": {"full_name": full_name, "invited_by": uid},
+            }).execute()
+            membership = (mem_res.data or [{}])[0]
+            if role == "tenant_owner":
+                patch = {"owner_email": email}
+                if full_name:
+                    patch["owner_name"] = full_name
+                sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+            return _ok({
+                "email": email,
+                "already_exists": True,
+                "invited": False,
+                "membership_id": membership.get("id"),
+                "tenant_name": tenant.get("name"),
+            }, "Usuario existente. Membresia actualizada")
+
+        invited = sb.auth.admin.invite_user_by_email(email, options={
+            "redirect_to": redirect_to,
+            "data": {
+                "full_name": full_name,
+                "tenant_id": tenant_id,
+                "tenant_name": tenant.get("name"),
+                "role": role,
+            },
+        })
+        user_id = invited.user.id
+        mem_res = sb.table("user_memberships").insert({
+            "user_id": user_id,
+            "role": role,
+            "tenant_id": tenant_id,
+            "store_id": None,
+            "branch_id": None,
+            "is_active": True,
+            "metadata": {"full_name": full_name, "invited": True, "invited_by": uid},
+        }).execute()
+        membership = (mem_res.data or [{}])[0]
+        if role == "tenant_owner":
+            patch = {"owner_email": email}
+            if full_name:
+                patch["owner_name"] = full_name
+            sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+        return _ok({
+            "email": email,
+            "already_exists": False,
+            "invited": True,
+            "membership_id": membership.get("id"),
+            "tenant_name": tenant.get("name"),
+            "redirect_to": redirect_to,
+        }, "Invitacion enviada")
+    except Exception as e:
+        return _err(str(e), 500)
+
+
 @app.route("/api/backend/tenant/accounts/staff", methods=["POST"])
 def create_staff_account():
     uid, m, err_resp, err_code = None, None, None, None
@@ -351,6 +592,138 @@ def update_staff_account(member_id):
         if auth_patch:
             sb.auth.admin.update_user_by_id(mem["user_id"], auth_patch)
         return _ok({"membership_id": member_id}, "Staff actualizado")
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/tenant/stores", methods=["POST"])
+def create_tenant_store():
+    uid, m, err, code = _require_tenant_manager()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    try:
+        sb = _sb()
+        tenant_id = _resolve_tenant_id_for_actor(uid, m, body.get("tenant_id"))
+        if not tenant_id:
+            return _err("No se pudo resolver el tenant activo", 403)
+
+        name = str(body.get("name", "")).strip()
+        store_id = str(body.get("id") or body.get("slug") or "").strip().lower()
+        slug = str(body.get("slug") or store_id).strip().lower()
+        if not name or not store_id:
+            return _err("name y slug son requeridos")
+
+        payload = {
+            "id": "".join(ch for ch in store_id if ch.isalnum() or ch in ("-", "_")).strip("-_"),
+            "slug": "".join(ch for ch in slug if ch.isalnum() or ch == "-").strip("-"),
+            "tenant_id": tenant_id,
+            "name": name,
+            "city": str(body.get("city", "")).strip() or None,
+            "notes": str(body.get("notes", "")).strip() or None,
+            "status": str(body.get("status", "active")).strip() or "active",
+            "business_type": str(body.get("business_type", "food")).strip() or "food",
+            "niche": str(body.get("niche") or body.get("business_niche") or "universal").strip() or "universal",
+            "template_id": body.get("template_id"),
+            "theme_tokens": body.get("theme_tokens") or {},
+            "public_visible": bool(body.get("public_visible", True)),
+            "owner_email": str(body.get("owner_email", "")).strip().lower() or None,
+            "owner_name": str(body.get("owner_name", "")).strip() or None,
+        }
+        if not payload["id"] or not payload["slug"]:
+            return _err("slug invalido")
+
+        res = sb.table("stores").insert(payload).execute()
+        created_store = (res.data or [payload])[0]
+
+        try:
+            sb.rpc("apply_niche_preset", {
+                "p_store_id": created_store["id"],
+                "p_tenant_id": tenant_id,
+                "p_niche_id": payload["niche"],
+            }).execute()
+        except Exception:
+            pass
+
+        created_branch = None
+        initial_branch_name = str(body.get("initial_branch_name", "")).strip()
+        if initial_branch_name:
+            branch_res = sb.table("branches").insert({
+                "tenant_id": tenant_id,
+                "store_id": created_store["id"],
+                "slug": str(body.get("initial_branch_slug") or "principal").strip().lower(),
+                "name": initial_branch_name,
+                "address": str(body.get("initial_branch_address", "")).strip() or None,
+                "city": str(body.get("initial_branch_city") or body.get("city") or "").strip() or None,
+                "phone": str(body.get("initial_branch_phone", "")).strip() or None,
+                "status": "active",
+                "is_primary": True,
+                "public_visible": True,
+            }).execute()
+            created_branch = (branch_res.data or [None])[0]
+
+        return jsonify({"store": created_store, "branch": created_branch}), 201
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/tenant/stores/<store_id>", methods=["PATCH"])
+def update_tenant_store(store_id):
+    uid, m, err, code = _require_tenant_manager()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    allowed = [
+        "name", "slug", "status", "template_id", "theme_tokens",
+        "public_visible", "business_type", "niche", "city", "notes",
+    ]
+    patch = {k: v for k, v in body.items() if k in allowed}
+    if not patch:
+        return _err("Sin campos validos")
+    try:
+        sb = _sb()
+        tenant_id = _resolve_tenant_id_for_actor(uid, m, body.get("tenant_id"))
+        res = sb.table("stores").update(patch).eq("id", store_id).eq("tenant_id", tenant_id).execute()
+        return jsonify((res.data or [{}])[0]), 200
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/tenant/branches", methods=["POST"])
+def create_tenant_branch():
+    uid, m, err, code = _require_tenant_manager()
+    if err:
+        return err, code
+    body = request.get_json(silent=True) or {}
+    if not body.get("slug") or not body.get("name"):
+        return _err("slug y name son requeridos")
+    try:
+        sb = _sb()
+        tenant_id = _resolve_tenant_id_for_actor(uid, m, body.get("tenant_id"))
+        store_id = body.get("store_id") or (m.get("store_id") if m else None)
+        if not tenant_id or not store_id:
+            return _err("tenant_id y store_id son requeridos", 400)
+
+        store = sb.table("stores").select("id,tenant_id").eq("id", store_id).maybe_single().execute().data
+        if not store or store.get("tenant_id") != tenant_id:
+            return _err("La tienda no pertenece al tenant activo", 400)
+
+        res = sb.table("branches").insert({
+            "tenant_id": tenant_id,
+            "store_id": store_id,
+            "slug": str(body.get("slug", "")).strip().lower(),
+            "name": str(body.get("name", "")).strip(),
+            "address": str(body.get("address", "")).strip() or None,
+            "city": str(body.get("city", "")).strip() or None,
+            "phone": str(body.get("phone", "")).strip() or None,
+            "status": "active",
+            "is_primary": bool(body.get("is_primary", False)),
+            "public_visible": bool(body.get("public_visible", True)),
+            "open_hour": body.get("open_hour", 10),
+            "close_hour": body.get("close_hour", 22),
+            "open_days": body.get("open_days", "L-D"),
+        }).execute()
+        return jsonify((res.data or [{}])[0]), 201
     except Exception as e:
         return _err(str(e), 500)
 
@@ -539,7 +912,7 @@ def invite_pipeline(req_id):
             return _err("La solicitud no tiene email", 400)
         body = request.get_json(silent=True) or {}
         redirect_to = body.get("redirectTo") or \
-            (request.headers.get("Origin", "") + "/onboarding")
+            (request.headers.get("Origin", "") + "/login")
         sb.auth.admin.invite_user_by_email(email, options={
             "redirect_to": redirect_to,
             "data": {

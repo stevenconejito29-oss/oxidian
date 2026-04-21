@@ -1,13 +1,12 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabaseAuth } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../shared/supabase/client'
 import { readCurrentSupabaseAccessToken } from '../../../legacy/lib/appSession'
-
-const BACKEND = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''
+import { buildBackendUrl } from '../../../shared/lib/backendBase'
 
 async function _backendFetch(method, path, body) {
   const token = readCurrentSupabaseAccessToken()
-  const res = await fetch(`${BACKEND}${path}`, {
+  const res = await fetch(buildBackendUrl(path), {
     method,
     headers: {
       'Content-Type': 'application/json',
