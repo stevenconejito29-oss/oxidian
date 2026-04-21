@@ -71,8 +71,17 @@ def admin_stats():
 @limiter.limit("120 per minute")
 def list_tenants():
     sb = _supa()
-    res = sb.table("tenants").select("*").order("created_at", desc=True).execute()
-    return jsonify(res.data or [])
+    res = sb.table("tenants").select(
+        "*, tenant_subscriptions(plan_id, status, current_period_end)"
+    ).order("created_at", desc=True).execute()
+    rows = []
+    for t in (res.data or []):
+        subs = t.pop("tenant_subscriptions", None) or []
+        sub  = subs[0] if isinstance(subs, list) and subs else (subs if isinstance(subs, dict) else {})
+        t["plan_id"]              = sub.get("plan_id", "starter")
+        t["subscription_status"]  = sub.get("status")
+        rows.append(t)
+    return jsonify(rows)
 
 
 @admin_bp.get("/tenants/<tenant_id>")
@@ -92,6 +101,9 @@ def create_tenant():
     for field in ["slug", "name"]:
         if not body.get(field):
             abort(400, f"Campo requerido: {field}")
+
+    plan_id = _clean_text(body.get("plan_id") or "growth")
+
     payload = {
         "slug":          body["slug"].lower().strip(),
         "name":          body["name"].strip(),
@@ -104,20 +116,55 @@ def create_tenant():
         "status":        body.get("status", "active"),
     }
     res = sb.table("tenants").insert(payload).execute()
-    return jsonify(res.data[0] if res.data else {}), 201
+    tenant = res.data[0] if res.data else {}
+
+    # Crear suscripción en tenant_subscriptions
+    if tenant.get("id"):
+        try:
+            sb.rpc("change_tenant_plan", {
+                "p_tenant_id": tenant["id"],
+                "p_plan_id":   plan_id,
+                "p_overrides": {},
+                "p_notes":     "Creado por Super Admin",
+            }).execute()
+        except Exception:
+            pass  # no abortar creación si la suscripción falla
+        tenant["plan_id"] = plan_id
+
+    return jsonify(tenant), 201
 
 
 @admin_bp.patch("/tenants/<tenant_id>")
 def update_tenant(tenant_id):
     sb = _supa()
     body = request.get_json(silent=True) or {}
+
+    plan_id = body.get("plan_id")
     allowed = ["name", "owner_name", "owner_email", "owner_phone",
                "billing_email", "monthly_fee", "notes", "status"]
     patch = {k: v for k, v in body.items() if k in allowed}
-    if not patch:
+
+    result = {}
+    if patch:
+        res = sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+        result = res.data[0] if res.data else {}
+
+    if plan_id:
+        try:
+            sb.rpc("change_tenant_plan", {
+                "p_tenant_id": tenant_id,
+                "p_plan_id":   plan_id,
+                "p_overrides": {},
+                "p_notes":     None,
+            }).execute()
+            result["plan_id"] = plan_id
+        except Exception as exc:
+            abort(400, f"Error actualizando plan: {exc}")
+
+    if not patch and not plan_id:
         abort(400, "Sin campos válidos")
-    res = sb.table("tenants").update(patch).eq("id", tenant_id).execute()
-    return jsonify(res.data[0] if res.data else {})
+
+    return jsonify(result)
 
 
 @admin_bp.delete("/tenants/<tenant_id>")
@@ -126,6 +173,118 @@ def delete_tenant(tenant_id):
     sb = _supa()
     sb.table("tenants").delete().eq("id", tenant_id).execute()
     return jsonify({"deleted": True, "id": tenant_id})
+
+
+# ─── Invitar dueño de tenant por email ────────────────────────────
+
+@admin_bp.post("/tenants/<tenant_id>/invite-owner")
+@limiter.limit("20 per minute")
+def invite_tenant_owner(tenant_id):
+    """
+    Envía un email de invitación Supabase al dueño del tenant.
+    El dueño recibe un link para crear su contraseña e iniciar sesión
+    directamente en el panel de tenant.
+    Si el usuario ya existe en Auth, solo actualiza/crea la membresía.
+    """
+    sb = _supa()
+    body = request.get_json(silent=True) or {}
+
+    email     = _clean_text(body.get("email")).lower()
+    full_name = _clean_text(body.get("full_name"))
+    role      = _clean_text(body.get("role") or "tenant_owner")
+
+    if not email:
+        abort(400, "email requerido")
+    if role not in OWNER_ROLES:
+        abort(400, f"Rol inválido: {role}")
+
+    tenant = sb.table("tenants").select("id,name").eq("id", tenant_id).maybe_single().execute().data
+    if not tenant:
+        abort(404, "Tenant no encontrado")
+
+    # Calcular redirect_to (panel del dueño)
+    redirect_to = _clean_text(body.get("redirect_to") or "")
+    if not redirect_to:
+        origin = _clean_text(request.headers.get("Origin") or "")
+        redirect_to = f"{origin}/tenant/login" if origin else None
+
+    # ¿El usuario ya existe en Auth?
+    existing_auth = None
+    try:
+        existing_auth = find_auth_user_by_email(email)
+    except Exception:
+        pass
+
+    if existing_auth:
+        auth_user  = normalize_auth_user(existing_auth)
+        membership = upsert_membership(
+            sb,
+            user_id=auth_user["user_id"],
+            role=role,
+            tenant_id=tenant_id,
+            store_id=None,
+            branch_id=None,
+            metadata={"full_name": full_name, "invited_by": g.auth_context.user_id},
+        )
+        if role == "tenant_owner":
+            patch = {"owner_email": email}
+            if full_name:
+                patch["owner_name"] = full_name
+            sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+
+        return jsonify({
+            "success":       True,
+            "invited":       False,
+            "already_exists": True,
+            "message":       f"El usuario ya existe. Membresía creada/actualizada.",
+            "email":         email,
+            "user_id":       auth_user["user_id"],
+            "membership_id": membership.get("id"),
+            "tenant_name":   tenant["name"],
+        })
+
+    # Usuario nuevo — invitar via Supabase (manda email con link de set-password)
+    try:
+        invited = invite_auth_user_by_email(
+            email,
+            redirect_to=redirect_to,
+            data={
+                "full_name":   full_name,
+                "tenant_id":   tenant_id,
+                "tenant_name": tenant["name"],
+                "role":        role,
+            },
+        )
+    except RuntimeError as exc:
+        abort(400, str(exc))
+
+    auth_user  = normalize_auth_user(invited)
+    membership = upsert_membership(
+        sb,
+        user_id=auth_user["user_id"],
+        role=role,
+        tenant_id=tenant_id,
+        store_id=None,
+        branch_id=None,
+        metadata={"full_name": full_name, "invited": True, "invited_by": g.auth_context.user_id},
+    )
+
+    if role == "tenant_owner":
+        patch = {"owner_email": email}
+        if full_name:
+            patch["owner_name"] = full_name
+        sb.table("tenants").update(patch).eq("id", tenant_id).execute()
+
+    return jsonify({
+        "success":       True,
+        "invited":       True,
+        "message":       f"Invitación enviada a {email}. El dueño recibirá un link para crear su contraseña.",
+        "email":         email,
+        "user_id":       auth_user.get("user_id"),
+        "membership_id": membership.get("id"),
+        "tenant_name":   tenant["name"],
+        "redirect_to":   redirect_to,
+    })
 
 
 # ─── Stores CRUD ──────────────────────────────────────────────────

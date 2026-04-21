@@ -12,6 +12,7 @@ import {
   listOwnerAccounts, createOwnerAccount,
   getSuperAdminStats,
   listLandingRequests,
+  inviteTenantOwner,
 } from '../../../shared/lib/supabaseApi'
 import { PLANS, FEATURES, FEATURE_LABELS, planHasFeature } from '../../../shared/lib/planFeatures'
 import ChatbotAuthManager from '../components/ChatbotAuthManager'
@@ -294,6 +295,7 @@ function TenantsTab() {
   const [filter,   setFilter]   = React.useState('all')
   const [wizard,   setWizard]   = React.useState(false)
   const [editT,    setEditT]    = React.useState(null)
+  const [inviteT,  setInviteT]  = React.useState(null)
 
   const load = React.useCallback(async()=>{
     setLoading(true)
@@ -358,6 +360,7 @@ function TenantsTab() {
                 <span style={{fontSize:13,fontWeight:600}}>{fmtMoney(t.monthly_fee)}</span>
                 <div style={{display:'flex',gap:6}}>
                   <Btn size="sm" variant="ghost" onClick={()=>setEditT(t)}>Editar</Btn>
+                  <Btn size="sm" variant="ghost" onClick={()=>setInviteT(t)}>📧 Invitar</Btn>
                   <Btn size="sm" variant="ghost" onClick={async()=>{ await updateTenant(t.id,{status:t.status==='active'?'suspended':'active'}); load() }}>
                     {t.status==='active'?'Suspender':'Activar'}
                   </Btn>
@@ -370,17 +373,18 @@ function TenantsTab() {
 
       {wizard && <TenantWizard onClose={()=>setWizard(false)} onDone={()=>{ setWizard(false); load() }} />}
       {editT  && <EditTenantModal tenant={editT} onClose={()=>setEditT(null)} onDone={()=>{ setEditT(null); load() }} />}
+      {inviteT && <InviteOwnerModal tenant={inviteT} onClose={()=>setInviteT(null)} />}
     </div>
   )
 }
 
-// ── Wizard Crear Tenant (3 pasos) ────────────────────────────────
 function TenantWizard({ onClose, onDone }) {
   const [step,    setStep]    = React.useState(1)
   const [saving,  setSaving]  = React.useState(false)
   const [error,   setError]   = React.useState('')
   const [tenant,  setTenant]  = React.useState({ name:'', slug:'', owner_name:'', owner_email:'', owner_phone:'', monthly_fee:0, notes:'', status:'active' })
-  const [account, setAccount] = React.useState({ full_name:'', email:'', password:'' })
+  const [invite,  setInvite]  = React.useState({ full_name:'', email:'' })
+  const [inviteResult, setInviteResult] = React.useState(null)   // {invited, email, already_exists}
   const [planId,  setPlanId]  = React.useState('growth')
   const [createdTenantId, setCreatedTenantId] = React.useState(null)
 
@@ -389,30 +393,41 @@ function TenantWizard({ onClose, onDone }) {
     try {
       const t = await createTenant({ ...tenant, plan_id: planId })
       setCreatedTenantId(t.id)
-      setAccount(a=>({...a, full_name: tenant.owner_name, email: tenant.owner_email}))
+      setInvite(a => ({ full_name: a.full_name || tenant.owner_name, email: a.email || tenant.owner_email }))
       setStep(2)
     } catch(e){ setError(e.message) }
     setSaving(false)
   }
 
-  async function handleStep2(e) {
+  async function handleInvite(e) {
     e.preventDefault(); setError(''); setSaving(true)
     try {
-      if (account.email && account.password) {
-        await createOwnerAccount({ ...account, tenant_id: createdTenantId, role:'tenant_owner' })
+      if (invite.email) {
+        const res = await inviteTenantOwner(createdTenantId, {
+          email:       invite.email,
+          full_name:   invite.full_name,
+          role:        'tenant_owner',
+          redirect_to: `${window.location.origin}/tenant/login`,
+        })
+        setInviteResult(res)
       }
       setStep(3)
     } catch(e){ setError(e.message) }
     setSaving(false)
   }
 
-  const STEPS = [['1','Datos del negocio'],['2','Cuenta del dueño'],['3','Confirmar']]
+  function handleSkipInvite() {
+    setInviteResult(null)
+    setStep(3)
+  }
+
+  const STEPS = [['1','Datos del negocio'],['2','Invitar al dueño'],['3','Confirmar']]
 
   return (
     <Modal title="Nuevo Tenant" onClose={onClose} width={620}>
       {/* Stepper */}
       <div style={{display:'flex',gap:0,marginBottom:24,background:C.bg2,borderRadius:10,padding:6}}>
-        {STEPS.map(([n,l],i)=>(
+        {STEPS.map(([n,l])=>(
           <div key={n} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'8px 4px'}}>
             <div style={{width:28,height:28,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,
               background:Number(n)<=step?C.text:C.border2,
@@ -477,27 +492,35 @@ function TenantWizard({ onClose, onDone }) {
         </form>
       )}
 
-      {/* PASO 2: Cuenta del dueño */}
+      {/* PASO 2: Invitar dueño por email */}
       {step===2 && (
-        <form onSubmit={handleStep2} style={{display:'grid',gap:14}}>
+        <form onSubmit={handleInvite} style={{display:'grid',gap:14}}>
           <div style={{padding:'12px 14px',background:'#eff6ff',borderRadius:10,fontSize:13,color:'#1e40af'}}>
-            ✅ Tenant <strong>{tenant.name}</strong> creado. Ahora crea la cuenta de acceso del dueño.
+            ✅ Tenant <strong>{tenant.name}</strong> creado con plan <strong>{PLAN_META[planId]?.label}</strong>.
+            Ahora envía la invitación al dueño para que cree su contraseña.
           </div>
-          <Field label="Nombre completo *">
-            <input style={inp} required value={account.full_name} onChange={e=>setAccount(a=>({...a,full_name:e.target.value}))} placeholder="Juan García" />
-          </Field>
-          <Field label="Email de acceso *">
-            <input style={inp} type="email" required value={account.email} onChange={e=>setAccount(a=>({...a,email:e.target.value}))} placeholder="juan@negocio.com" />
-          </Field>
-          <Field label="Contraseña temporal *" hint="El dueño puede cambiarla desde su perfil">
-            <input style={inp} type="password" required value={account.password} onChange={e=>setAccount(a=>({...a,password:e.target.value}))} placeholder="Mínimo 8 caracteres" />
-          </Field>
-          <div style={{padding:'10px 14px',background:'#fefce8',borderRadius:8,fontSize:12,color:'#854d0e'}}>
-            ⚠️ La cuenta se crea con <strong>is_active: true</strong> y rol <strong>tenant_owner</strong>. El dueño podrá entrar de inmediato.
+
+          <div style={{padding:'10px 14px',background:'#f0fdf4',borderRadius:8,fontSize:12,color:'#15803d',lineHeight:1.5}}>
+            📧 Supabase enviará un email con un link seguro. El dueño hace clic, crea su contraseña
+            y accede directamente al panel. <strong>No necesitas crear una contraseña temporal.</strong>
           </div>
-          <div style={{display:'flex',gap:8}}>
-            <Btn type="submit" disabled={saving}>{saving?'Creando cuenta…':'Crear cuenta →'}</Btn>
-            <Btn variant="ghost" type="button" onClick={()=>setStep(3)}>Saltar (sin cuenta)</Btn>
+
+          <Field label="Nombre completo del dueño">
+            <input style={inp} value={invite.full_name}
+              onChange={e=>setInvite(a=>({...a,full_name:e.target.value}))} placeholder="Juan García" />
+          </Field>
+          <Field label="Email de acceso *" hint="Recibirá un link para crear su contraseña">
+            <input style={inp} type="email" required value={invite.email}
+              onChange={e=>setInvite(a=>({...a,email:e.target.value}))} placeholder="juan@negocio.com" />
+          </Field>
+
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <Btn type="submit" disabled={saving || !invite.email}>
+              {saving ? 'Enviando…' : '📧 Enviar invitación por email'}
+            </Btn>
+            <Btn variant="ghost" type="button" onClick={handleSkipInvite}>
+              Saltar (sin invitar ahora)
+            </Btn>
           </div>
         </form>
       )}
@@ -508,35 +531,53 @@ function TenantWizard({ onClose, onDone }) {
           <div style={{fontSize:56,marginBottom:16}}>🎉</div>
           <h3 style={{margin:'0 0 8px',fontSize:20,fontWeight:800}}>¡Tenant creado!</h3>
           <p style={{color:C.muted,fontSize:14,marginBottom:20}}>
-            <strong>{tenant.name}</strong> está listo en la plataforma.
+            <strong>{tenant.name}</strong> está listo en la plataforma con plan <strong>{PLAN_META[planId]?.label}</strong>.
           </p>
-          {account.email && (
+
+          {inviteResult ? (
             <div style={{background:C.bg2,borderRadius:12,padding:'14px 18px',marginBottom:20,textAlign:'left'}}>
               <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.05em',marginBottom:10}}>
-                Credenciales de acceso del dueño
+                Invitación de acceso
               </div>
               <div style={{display:'grid',gap:6}}>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
                   <span style={{color:C.muted}}>Email</span>
-                  <strong style={{wordBreak:'break-all'}}>{account.email}</strong>
+                  <strong style={{wordBreak:'break-all'}}>{inviteResult.email}</strong>
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
-                  <span style={{color:C.muted}}>Contraseña temporal</span>
-                  <strong style={{fontFamily:'monospace'}}>{account.password||'—'}</strong>
+                  <span style={{color:C.muted}}>Estado</span>
+                  {inviteResult.already_exists
+                    ? <Badge color="#ca8a04">⚠️ Usuario ya existía — membresía asignada</Badge>
+                    : <Badge color="#16a34a">✅ Email enviado — pendiente de activación</Badge>
+                  }
                 </div>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'6px 0'}}>
                   <span style={{color:C.muted}}>Rol asignado</span>
                   <Badge color="#6366f1">tenant_owner</Badge>
                 </div>
               </div>
-              <div style={{marginTop:10,fontSize:11,color:'#16a34a',background:'#f0fdf4',borderRadius:6,padding:'6px 10px'}}>
-                ✅ Cuenta activa — el dueño puede iniciar sesión de inmediato en /login
-              </div>
+              {!inviteResult.already_exists && (
+                <div style={{marginTop:10,fontSize:11,color:'#1d4ed8',background:'#eff6ff',borderRadius:6,padding:'6px 10px'}}>
+                  📧 El dueño recibirá un email con link para crear su contraseña y acceder al panel.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{marginBottom:20,padding:'10px 14px',background:'#fefce8',borderRadius:8,fontSize:13,color:'#854d0e'}}>
+              ⚠️ No se envió invitación. Puedes hacerlo más tarde desde la lista de tenants.
             </div>
           )}
+
           <div style={{display:'flex',gap:8,justifyContent:'center'}}>
             <Btn onClick={onDone}>Ver todos los tenants</Btn>
-            <Btn variant="ghost" onClick={()=>{ setStep(1); setTenant({name:'',slug:'',owner_name:'',owner_email:'',owner_phone:'',monthly_fee:0,notes:'',status:'active'}); setAccount({full_name:'',email:'',password:''}); setPlanId('growth'); setCreatedTenantId(null) }}>Crear otro</Btn>
+            <Btn variant="ghost" onClick={()=>{
+              setStep(1)
+              setTenant({name:'',slug:'',owner_name:'',owner_email:'',owner_phone:'',monthly_fee:0,notes:'',status:'active'})
+              setInvite({full_name:'',email:''})
+              setInviteResult(null)
+              setPlanId('growth')
+              setCreatedTenantId(null)
+            }}>Crear otro</Btn>
           </div>
         </div>
       )}
@@ -590,6 +631,64 @@ function EditTenantModal({ tenant, onClose, onDone }) {
           <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+// ── Invitar Owner a Tenant existente ──────────────────────────────
+function InviteOwnerModal({ tenant, onClose }) {
+  const [form,   setForm]   = React.useState({ full_name: tenant.owner_name || '', email: tenant.owner_email || '' })
+  const [saving, setSaving] = React.useState(false)
+  const [result, setResult] = React.useState(null)
+  const [error,  setError]  = React.useState('')
+
+  async function handleSend(e) {
+    e.preventDefault(); setSaving(true); setError('')
+    try {
+      const res = await inviteTenantOwner(tenant.id, {
+        email:       form.email,
+        full_name:   form.full_name,
+        role:        'tenant_owner',
+        redirect_to: `${window.location.origin}/tenant/login`,
+      })
+      setResult(res)
+    } catch(e){ setError(e.message) }
+    setSaving(false)
+  }
+
+  return (
+    <Modal title={`Invitar dueño — ${tenant.name}`} onClose={onClose}>
+      {error && <Alert>{error}</Alert>}
+      {result ? (
+        <div style={{textAlign:'center',padding:'12px 0'}}>
+          <div style={{fontSize:48,marginBottom:12}}>{result.already_exists ? '⚠️' : '📧'}</div>
+          <p style={{fontWeight:700,fontSize:15,marginBottom:8}}>
+            {result.already_exists ? 'Usuario ya existía' : '¡Invitación enviada!'}
+          </p>
+          <p style={{color:C.muted,fontSize:13,marginBottom:16}}>{result.message}</p>
+          <div style={{background:C.bg2,borderRadius:10,padding:'10px 14px',fontSize:13,textAlign:'left',marginBottom:16}}>
+            <div style={{marginBottom:4}}><strong>Email:</strong> {result.email}</div>
+            <div><strong>Rol:</strong> <Badge color="#6366f1">tenant_owner</Badge></div>
+          </div>
+          <Btn onClick={onClose}>Cerrar</Btn>
+        </div>
+      ) : (
+        <form onSubmit={handleSend} style={{display:'grid',gap:14}}>
+          <div style={{padding:'10px 14px',background:'#eff6ff',borderRadius:8,fontSize:13,color:'#1e40af'}}>
+            Supabase enviará un email al dueño con un link para crear su contraseña y acceder al panel.
+          </div>
+          <Field label="Nombre completo">
+            <input style={inp} value={form.full_name} onChange={e=>setForm(f=>({...f,full_name:e.target.value}))} placeholder="Juan García" />
+          </Field>
+          <Field label="Email *" hint="El dueño recibirá aquí el link de activación">
+            <input style={inp} type="email" required value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="juan@negocio.com" />
+          </Field>
+          <div style={{display:'flex',gap:8}}>
+            <Btn type="submit" disabled={saving || !form.email}>{saving ? 'Enviando…' : '📧 Enviar invitación'}</Btn>
+            <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+          </div>
+        </form>
+      )}
     </Modal>
   )
 }
