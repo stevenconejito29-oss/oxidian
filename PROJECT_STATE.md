@@ -167,6 +167,41 @@
 - No hubo cambios de DDL ni de RLS en esta iteracion.
 - `database_schema.sql` no requirio actualizacion.
 
+## Iteracion 2026-04-21 - endpoint publico alineado en backend local
+
+### Causa raiz
+
+- El frontend ya enviaba la solicitud al backend mediante `/public/landing-request`.
+- En Vercel eso se resuelve por `api/index.py`, pero en desarrollo local Vite proxya `/public/*` al Flask local de `backend/`.
+- Ese Flask local no tenia la ruta `POST /public/landing-request`, por eso devolvia contenido no JSON y el frontend mostraba:
+  - `Backend no disponible en /public/landing-request. Configura VITE_BACKEND_URL.`
+
+### Implementado
+
+- `backend/app/modules/public/routes.py`
+  - Nuevo `POST /public/landing-request`.
+  - Inserta el lead en `landing_requests`.
+  - Si llega password, crea o reutiliza la cuenta Auth del dueno antes de la aprobacion.
+- `test_backend_public_landing_request_route.py`
+  - Nueva prueba del contrato de la ruta local.
+
+### Decision de arquitectura
+
+- El backend local y el backend serverless deben exponer el mismo contrato funcional para los flujos publicos, especialmente los que se prueban antes del deploy.
+
+### Validacion
+
+- `backend\.venv\Scripts\python.exe -m unittest test_api_public_landing_request.py test_api_owner_account_helpers.py`
+- `backend\.venv\Scripts\python.exe -m py_compile api\index.py backend\app\modules\public\routes.py api\_lib\owner_account_helpers.py`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- La prueba `test_backend_public_landing_request_route.py` no pudo ejecutarse en este entorno porque el `.venv` local no tiene cargado `Flask-Limiter`, aunque `backend/requirements.txt` si lo declara.
+- Si el backend local falla al arrancar por dependencias, hay que reinstalar:
+  - `backend\.venv\Scripts\pip.exe install -r backend\requirements.txt`
+- Se corrigio el pin roto `Flask-Limiter==3.9.4` a `Flask-Limiter==3.9.2`, porque `3.9.4` no existe en PyPI.
+
 ## Iteracion 2026-04-20 - Schema/RLS minimo alineado con el frontend
 
 ### Implementado
@@ -563,3 +598,35 @@
   - creacion de sedes
   - creacion de staff con roles scopeados
   - personalizacion modular y de menu por tienda
+
+## Iteracion 2026-04-21 - verificacion del flujo owner -> pipeline -> panel
+
+### Hallazgo de causa raiz
+
+- El flujo de solicitud y aprobacion del owner ya creaba el lead y activaba la membresia `tenant_owner`, pero el panel del dueno seguia creando tiendas y sedes por insercion directa desde `frontend/src/shared/lib/supabaseApi.js`.
+- Eso dejaba el paso "entrar y crear sus tiendas" dependiendo de RLS directa en el frontend, en vez del contrato canonico ya implementado en `api/index.py` y `backend/app/modules/tenant/routes.py`.
+
+### Correcciones aplicadas
+
+- `frontend/src/shared/lib/supabaseApi.js`
+  - `createStore()` ahora usa `POST /tenant/stores`
+  - `updateStore()` ahora usa `PATCH /tenant/stores/:id`
+  - `createBranch()` ahora usa `POST /tenant/branches`
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+  - el wizard de creacion de tienda ahora envia tambien los datos de la sede inicial al backend del tenant
+  - se elimina la doble creacion frontend `createStore() + createBranch()` para la primera tienda
+- Se anaden pruebas nuevas:
+  - `test_api_owner_activation_flow.py`
+  - `test_frontend_tenant_mutations_contract.py`
+  - `test_backend_public_landing_request_route.py`
+
+### Verificacion
+
+- `backend/.venv/Scripts/python.exe -m unittest test_api_public_landing_request.py test_api_owner_account_helpers.py test_api_owner_activation_flow.py test_frontend_tenant_mutations_contract.py test_backend_public_landing_request_route.py`
+- `backend/.venv/Scripts/python.exe -m py_compile api/index.py api/_lib/owner_account_helpers.py backend/app/modules/public/routes.py backend/app/modules/admin/routes.py`
+- `node --test frontend/tests/backendBase.test.mjs frontend/tests/pipelineAdmission.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota de entorno
+
+- `backend/.venv/Scripts/pip.exe` estaba resolviendo paquetes en otro entorno externo (`nuevoproyectooxidian`). Para verificar el backend local de este repo hubo que instalar `Flask-Limiter==3.9.2` usando `backend/.venv/Scripts/python.exe -m pip install ...`, que si apunta al entorno correcto.

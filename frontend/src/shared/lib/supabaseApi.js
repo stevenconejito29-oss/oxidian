@@ -95,27 +95,15 @@ export async function listStores(tenantId = null) {
 }
 
 export async function createStore(payload) {
-  const { data, error } = await supabaseAuth
-    .from('stores')
-    .insert(payload)
-    .select()
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  const data = await _backendFetch('POST', '/tenant/stores', payload)
+  return data?.store || data
 }
 
 export async function updateStore(storeId, patch) {
   const allowed = ['name', 'slug', 'status', 'template_id', 'theme_tokens',
     'public_visible', 'business_type', 'niche', 'city', 'notes']
   const safe = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)))
-  const { data, error } = await supabaseAuth
-    .from('stores')
-    .update(safe)
-    .eq('id', storeId)
-    .select()
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  return _backendFetch('PATCH', `/tenant/stores/${storeId}`, safe)
 }
 
 export async function deleteStore(storeId) {
@@ -151,13 +139,7 @@ export async function listBranches(tenantId = null, storeId = null) {
 }
 
 export async function createBranch(payload) {
-  const { data, error } = await supabaseAuth
-    .from('branches')
-    .insert(payload)
-    .select()
-    .single()
-  if (error) throw new Error(error.message)
-  return data
+  return _backendFetch('POST', '/tenant/branches', payload)
 }
 
 export async function updateBranch(branchId, patch) {

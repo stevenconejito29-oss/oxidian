@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from flask import Blueprint, abort, g, jsonify, request
 
+from ...core.accounts import create_or_update_auth_user, find_auth_user_by_email, normalize_auth_user
 from ...core.extensions import supabase_admin, limiter
 
 public_bp = Blueprint("public", __name__, url_prefix="/public")
@@ -75,6 +76,64 @@ def _get_menu_data(store_id: str):
 @public_bp.get("/health")
 def public_health():
     return {"status": "ok", "module": "public"}
+
+
+@public_bp.post("/landing-request")
+@limiter.limit("10 per minute")
+def create_public_landing_request():
+    sb = _supa()
+    body = request.get_json(silent=True) or {}
+
+    full_name = str(body.get("full_name", "")).strip()
+    email = str(body.get("email", "")).strip().lower()
+    phone = str(body.get("phone", "")).strip() or None
+    business_name = str(body.get("business_name", "")).strip() or None
+    business_niche = str(body.get("business_niche", "")).strip() or None
+    city = str(body.get("city", "")).strip() or None
+    message = str(body.get("message", "")).strip() or None
+    password = str(body.get("password", "")).strip()
+
+    if not full_name or not email:
+        abort(400, "full_name y email requeridos")
+    if password and len(password) < 8:
+        abort(400, "La password debe tener al menos 8 caracteres")
+
+    owner_account_created = False
+    owner_account_exists = False
+    owner_user_id = None
+
+    if password:
+        existing = find_auth_user_by_email(email)
+        if existing:
+            owner_account_exists = True
+            owner_user_id = normalize_auth_user(existing).get("user_id")
+        else:
+            auth_result = create_or_update_auth_user(email, password, full_name=full_name)
+            owner_account_created = bool(auth_result.get("created"))
+            owner_user_id = normalize_auth_user(auth_result.get("user")).get("user_id")
+
+    res = sb.table("landing_requests").insert({
+        "full_name": full_name,
+        "email": email,
+        "phone": phone,
+        "business_name": business_name,
+        "business_niche": business_niche,
+        "city": city,
+        "message": message,
+        "source": "landing",
+        "status": "pending",
+    }).execute()
+    created = res.data[0] if res.data else {}
+
+    return jsonify({
+        "success": True,
+        "id": created.get("id"),
+        "status": created.get("status", "pending"),
+        "email": email,
+        "owner_user_id": owner_user_id,
+        "owner_account_created": owner_account_created,
+        "owner_account_exists": owner_account_exists,
+    }), 201
 
 
 # ─── Menú público por store_id ─────────────────────────────────────

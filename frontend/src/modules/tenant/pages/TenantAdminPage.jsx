@@ -347,16 +347,11 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
         tenant_id: tenantId, niche: nicho.id,
         business_type: nicho.templateId, template_id: estilo.id,
         city: form.city, status:'active', public_visible:true, theme_tokens:{},
+        initial_branch_name: form.initial_branch_name,
+        initial_branch_slug: form.initial_branch_slug||'principal',
+        initial_branch_address: form.initial_branch_address,
+        initial_branch_city: form.initial_branch_city||form.city,
       })
-      if (form.initial_branch_name) {
-        await createBranch({
-          tenant_id: tenantId, store_id: store.id,
-          slug: form.initial_branch_slug||'principal',
-          name: form.initial_branch_name,
-          address: form.initial_branch_address, city: form.initial_branch_city||form.city,
-          status:'active', is_primary:true, public_visible:true,
-        })
-      }
       await onRefresh()
       setSelectedStoreId(store.id)
       setTab('customize')
