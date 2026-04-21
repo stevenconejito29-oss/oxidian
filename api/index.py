@@ -134,6 +134,22 @@ def _find_auth_user_by_email(sb, email: str):
         return str(getattr(user, "email", "")).strip().lower()
     return next((u for u in users if _user_email(u) == target), None)
 
+
+def _normalize_auth_user_id(user):
+    if not user:
+        return None
+    return user.get("id") if isinstance(user, dict) else getattr(user, "id", None)
+
+
+def _normalize_auth_user_metadata(user):
+    if not user:
+        return {}
+    if isinstance(user, dict):
+        raw = user.get("user_metadata") or user.get("app_metadata") or {}
+    else:
+        raw = getattr(user, "user_metadata", None) or getattr(user, "app_metadata", None) or {}
+    return dict(raw or {})
+
 # ── Preflight CORS ────────────────────────────────────────────────────
 @app.before_request
 def handle_options():
@@ -149,6 +165,74 @@ def handle_options():
 @app.route("/api/backend/health")
 def health():
     return _ok({"supabase": bool(SUPABASE_URL)}, "API OK")
+
+
+@app.route("/api/backend/public/landing-request", methods=["POST"])
+def create_public_landing_request():
+    body = request.get_json(silent=True) or {}
+    full_name = str(body.get("full_name", "")).strip()
+    email = str(body.get("email", "")).strip().lower()
+    phone = str(body.get("phone", "")).strip() or None
+    business_name = str(body.get("business_name", "")).strip() or None
+    business_niche = str(body.get("business_niche", "")).strip() or None
+    city = str(body.get("city", "")).strip() or None
+    message = str(body.get("message", "")).strip() or None
+    password = str(body.get("password", "")).strip()
+
+    if not full_name or not email:
+        return _err("full_name y email son requeridos")
+    if password and len(password) < 8:
+        return _err("La password debe tener al menos 8 caracteres")
+
+    try:
+        sb = _sb()
+        owner_account_created = False
+        owner_account_exists = False
+        owner_user_id = None
+
+        if password:
+            existing = _find_auth_user_by_email(sb, email)
+            if existing:
+                owner_account_exists = True
+                owner_user_id = _normalize_auth_user_id(existing)
+            else:
+                auth_res = sb.auth.admin.create_user({
+                    "email": email,
+                    "password": password,
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "full_name": full_name,
+                        "pending_approval": True,
+                        "requested_via": "landing_request",
+                        "business_name": business_name,
+                    },
+                })
+                owner_account_created = True
+                owner_user_id = getattr(getattr(auth_res, "user", None), "id", None)
+
+        res = sb.table("landing_requests").insert({
+            "full_name": full_name,
+            "email": email,
+            "phone": phone,
+            "business_name": business_name,
+            "business_niche": business_niche,
+            "city": city,
+            "message": message,
+            "source": "landing",
+            "status": "pending",
+        }).execute()
+        created = (res.data or [{}])[0]
+
+        return _ok({
+            "id": created.get("id"),
+            "status": created.get("status", "pending"),
+            "email": email,
+            "owner_user_id": owner_user_id,
+            "owner_account_created": owner_account_created,
+            "owner_account_exists": owner_account_exists,
+        }, "Solicitud creada", 201)
+    except Exception as e:
+        return _err(str(e), 500)
 
 # ══════════════════════════════════════════════════════════════════════
 # ADMIN — Cuentas de usuario (requiere service_role)
@@ -237,7 +321,7 @@ def create_owner_account():
             "user_id": user_id, "role": role,
             "tenant_id": tenant_id, "store_id": None, "branch_id": None,
             "is_active": True,
-            "metadata": {"full_name": full_name, "created_by": uid},
+            "metadata": {"full_name": full_name, "email": email, "created_by": uid},
         }).execute()
         membership = (mem_res.data or [{}])[0]
         # Actualizar owner_email en tenant
@@ -431,10 +515,16 @@ def invite_owner_to_tenant(tenant_id):
             existing = None
 
         if existing:
-            metadata = dict((existing.get("user_metadata") if isinstance(existing, dict) else existing.user_metadata) or {})
+            metadata = _normalize_auth_user_metadata(existing)
             if full_name:
                 metadata["full_name"] = full_name
-            existing_id = existing["id"] if isinstance(existing, dict) else existing.id
+            metadata.update({
+                "pending_approval": False,
+                "tenant_id": tenant_id,
+                "tenant_name": tenant.get("name"),
+                "role": role,
+            })
+            existing_id = _normalize_auth_user_id(existing)
             sb.auth.admin.update_user_by_id(existing_id, {"user_metadata": metadata})
             delete_q = sb.table("user_memberships").delete() \
                 .eq("user_id", existing_id).eq("role", role).eq("tenant_id", tenant_id)
@@ -446,7 +536,7 @@ def invite_owner_to_tenant(tenant_id):
                 "store_id": None,
                 "branch_id": None,
                 "is_active": True,
-                "metadata": {"full_name": full_name, "invited_by": uid},
+                "metadata": {"full_name": full_name, "email": email, "invited_by": uid},
             }).execute()
             membership = (mem_res.data or [{}])[0]
             if role == "tenant_owner":
@@ -466,6 +556,7 @@ def invite_owner_to_tenant(tenant_id):
             "redirect_to": redirect_to,
             "data": {
                 "full_name": full_name,
+                "pending_approval": False,
                 "tenant_id": tenant_id,
                 "tenant_name": tenant.get("name"),
                 "role": role,
@@ -479,7 +570,7 @@ def invite_owner_to_tenant(tenant_id):
             "store_id": None,
             "branch_id": None,
             "is_active": True,
-            "metadata": {"full_name": full_name, "invited": True, "invited_by": uid},
+            "metadata": {"full_name": full_name, "email": email, "invited": True, "invited_by": uid},
         }).execute()
         membership = (mem_res.data or [{}])[0]
         if role == "tenant_owner":
@@ -558,7 +649,7 @@ def create_staff_account():
             "store_id": store_id,
             "branch_id": branch_id,
             "is_active": True,
-            "metadata": {"full_name": full_name, "created_by": uid},
+            "metadata": {"full_name": full_name, "email": email, "created_by": uid},
         }).execute()
         membership = (mem_res.data or [{}])[0]
         return _ok({

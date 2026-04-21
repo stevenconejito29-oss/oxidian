@@ -223,22 +223,24 @@ export async function updateOwnerAccount(membershipId, patch) {
 }
 
 export async function listOwnerAccounts() {
-  // Consulta directa a Supabase — no necesita Flask backend
-  // super_admin ve todo por RLS; incluye nombre del tenant
-  const { data, error } = await supabaseAuth
-    .from('user_memberships')
-    .select('id, user_id, role, tenant_id, is_active, metadata, created_at, tenants(name)')
-    .in('role', ['tenant_owner', 'tenant_admin'])
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return (data || []).map(m => ({
-    ...m,
-    membership_id:  m.id,
-    full_name:      m.metadata?.full_name || '',
-    email:          m.metadata?.email     || '',
-    tenant_name:    m.tenants?.name       || 'Sin tenant',
-    last_sign_in_at: null,
-  }))
+  try {
+    return await _backendFetch('GET', '/admin/accounts/owners')
+  } catch (_) {
+    const { data, error } = await supabaseAuth
+      .from('user_memberships')
+      .select('id, user_id, role, tenant_id, is_active, metadata, created_at, tenants(name)')
+      .in('role', ['tenant_owner', 'tenant_admin'])
+      .order('created_at', { ascending: false })
+    if (error) throw new Error(error.message)
+    return (data || []).map(m => ({
+      ...m,
+      membership_id:  m.id,
+      full_name:      m.metadata?.full_name || '',
+      email:          m.metadata?.email     || '',
+      tenant_name:    m.tenants?.name       || 'Sin tenant',
+      last_sign_in_at: null,
+    }))
+  }
 }
 
 export async function createStaffAccount(payload) {
@@ -310,6 +312,10 @@ export async function updateLandingRequest(id, patch) {
 
 export async function inviteLandingRequest(id, redirectTo) {
   return _backendFetch('POST', `/admin/pipeline/${id}/invite`, { redirectTo })
+}
+
+export async function submitLandingRequest(payload) {
+  return _backendFetch('POST', '/public/landing-request', payload)
 }
 
 // ══════════════════════════════════════════════════════════════════════

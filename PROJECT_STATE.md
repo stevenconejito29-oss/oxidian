@@ -121,6 +121,52 @@
 - No hubo cambios de DDL ni de RLS en esta iteracion.
 - `database_schema.sql` no requirio actualizacion.
 
+## Iteracion 2026-04-21 - cuenta del dueno creada desde la solicitud y visible tras aprobacion
+
+### Causa raiz
+
+- El landing solo insertaba `landing_requests`; no creaba ninguna cuenta de acceso del dueno.
+- Por eso, cuando el super admin aprobaba desde pipeline, el sistema solo podia invitar despues, pero no existia una "cuenta ya creada" asociada a la solicitud.
+- Ademas, el panel del super admin obtenia las cuentas owner desde una consulta frontend menos fiable, y la metadata de membresia no guardaba siempre el email del dueno.
+
+### Implementado
+
+- `frontend/src/modules/admin/pages/LandingPage.jsx`
+  - El formulario de solicitud ahora pide contrasena y confirmacion.
+  - La solicitud deja preparada la cuenta del dueno al mismo tiempo que entra en pipeline.
+  - El copy del landing ahora explica que la cuenta queda pendiente hasta aprobacion del super admin.
+- `api/index.py`
+  - Nuevo endpoint `POST /api/backend/public/landing-request`.
+  - La solicitud publica puede crear el lead y dejar creada la cuenta Auth del dueno antes de la aprobacion.
+  - La aprobacion del owner ahora guarda mejor la metadata de Auth y de `user_memberships`, incluyendo email.
+- `frontend/src/shared/lib/supabaseApi.js`
+  - Nuevo `submitLandingRequest()`.
+  - `listOwnerAccounts()` prioriza el backend serverless para listar owners hidratados.
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+  - Al cerrar la invitacion de owner en tenants, el listado se recarga para que la cuenta aparezca al instante.
+- `test_api_public_landing_request.py`
+  - Nueva prueba para el flujo de solicitud publica con creacion de cuenta del dueno.
+
+### Decision de arquitectura
+
+- El contrato funcional queda asi:
+  - el dueno crea su cuenta cuando envia la solicitud
+  - el pipeline conserva la aprobacion comercial
+  - la aprobacion del super admin solo activa el acceso jerarquico creando la membresia `tenant_owner`
+- Asi el dueno no depende de que el pipeline "invente" una cuenta despues; la cuenta ya existe y la aprobacion le da acceso real al panel.
+
+### Validacion
+
+- `backend\.venv\Scripts\python.exe -m unittest test_api_public_landing_request.py test_api_owner_account_helpers.py`
+- `backend\.venv\Scripts\python.exe -m py_compile api\index.py api\_lib\owner_account_helpers.py backend\app\modules\admin\routes.py`
+- `node --test frontend/tests/backendBase.test.mjs frontend/tests/pipelineAdmission.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota de schema
+
+- No hubo cambios de DDL ni de RLS en esta iteracion.
+- `database_schema.sql` no requirio actualizacion.
+
 ## Iteracion 2026-04-20 - Schema/RLS minimo alineado con el frontend
 
 ### Implementado

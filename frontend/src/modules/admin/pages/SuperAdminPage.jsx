@@ -374,7 +374,7 @@ function TenantsTab() {
 
       {wizard && <TenantWizard onClose={()=>setWizard(false)} onDone={()=>{ setWizard(false); load() }} />}
       {editT  && <EditTenantModal tenant={editT} onClose={()=>setEditT(null)} onDone={()=>{ setEditT(null); load() }} />}
-      {inviteT && <InviteOwnerModal tenant={inviteT} onClose={()=>setInviteT(null)} />}
+      {inviteT && <InviteOwnerModal tenant={inviteT} onClose={()=>setInviteT(null)} onDone={()=>{ setInviteT(null); load() }} />}
     </div>
   )
 }
@@ -637,7 +637,7 @@ function EditTenantModal({ tenant, onClose, onDone }) {
 }
 
 // ── Invitar Owner a Tenant existente ──────────────────────────────
-function InviteOwnerModal({ tenant, onClose }) {
+function InviteOwnerModal({ tenant, onClose, onDone }) {
   const [form,   setForm]   = React.useState({ full_name: tenant.owner_name || '', email: tenant.owner_email || '' })
   const [saving, setSaving] = React.useState(false)
   const [result, setResult] = React.useState(null)
@@ -671,7 +671,7 @@ function InviteOwnerModal({ tenant, onClose }) {
             <div style={{marginBottom:4}}><strong>Email:</strong> {result.email}</div>
             <div><strong>Rol:</strong> <Badge color="#6366f1">tenant_owner</Badge></div>
           </div>
-          <Btn onClick={onClose}>Cerrar</Btn>
+          <Btn onClick={onDone || onClose}>Cerrar</Btn>
         </div>
       ) : (
         <form onSubmit={handleSend} style={{display:'grid',gap:14}}>
