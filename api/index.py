@@ -21,6 +21,7 @@ import jwt
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from supabase import create_client, Client
+from api._lib.owner_account_helpers import extract_auth_admin_users, query_eq_or_null
 
 # ── Configuración ───────────────────────────────────────────────────
 SUPABASE_URL         = os.environ.get("SUPABASE_URL", "")
@@ -121,6 +122,18 @@ def _ok(data=None, msg="OK", status=200):
         payload["data"] = data
     return jsonify(payload), status
 
+def _find_auth_user_by_email(sb, email: str):
+    target = str(email or "").strip().lower()
+    if not target:
+        return None
+    users_response = sb.auth.admin.list_users()
+    users = extract_auth_admin_users(users_response)
+    def _user_email(user):
+        if isinstance(user, dict):
+            return str(user.get("email", "")).strip().lower()
+        return str(getattr(user, "email", "")).strip().lower()
+    return next((u for u in users if _user_email(u) == target), None)
+
 # ── Preflight CORS ────────────────────────────────────────────────────
 @app.before_request
 def handle_options():
@@ -209,18 +222,17 @@ def create_owner_account():
             created = True
         except Exception as create_err:
             if "already registered" in str(create_err).lower():
-                users = sb.auth.admin.list_users()
-                existing = next((u for u in users if u.email == email), None)
+                existing = _find_auth_user_by_email(sb, email)
                 if not existing:
                     return _err(f"Usuario ya existe pero no se pudo obtener: {create_err}")
-                user_id = existing.id
+                user_id = existing["id"] if isinstance(existing, dict) else existing.id
                 sb.auth.admin.update_user_by_id(user_id, {"password": password})
                 created = False
             else:
                 return _err(str(create_err), 500)
         # Upsert membresía
-        sb.table("user_memberships").delete() \
-            .eq("user_id", user_id).eq("role", role).is_("tenant_id", tenant_id).execute()
+        delete_q = sb.table("user_memberships").delete().eq("user_id", user_id).eq("role", role)
+        query_eq_or_null(delete_q, "tenant_id", tenant_id).execute()
         mem_res = sb.table("user_memberships").insert({
             "user_id": user_id, "role": role,
             "tenant_id": tenant_id, "store_id": None, "branch_id": None,
@@ -414,21 +426,21 @@ def invite_owner_to_tenant(tenant_id):
 
         existing = None
         try:
-            users = sb.auth.admin.list_users()
-            existing = next((u for u in users if (u.email or "").lower() == email), None)
+            existing = _find_auth_user_by_email(sb, email)
         except Exception:
             existing = None
 
         if existing:
-            metadata = dict(existing.user_metadata or {})
+            metadata = dict((existing.get("user_metadata") if isinstance(existing, dict) else existing.user_metadata) or {})
             if full_name:
                 metadata["full_name"] = full_name
-            sb.auth.admin.update_user_by_id(existing.id, {"user_metadata": metadata})
+            existing_id = existing["id"] if isinstance(existing, dict) else existing.id
+            sb.auth.admin.update_user_by_id(existing_id, {"user_metadata": metadata})
             delete_q = sb.table("user_memberships").delete() \
-                .eq("user_id", existing.id).eq("role", role).eq("tenant_id", tenant_id)
+                .eq("user_id", existing_id).eq("role", role).eq("tenant_id", tenant_id)
             delete_q.execute()
             mem_res = sb.table("user_memberships").insert({
-                "user_id": existing.id,
+                "user_id": existing_id,
                 "role": role,
                 "tenant_id": tenant_id,
                 "store_id": None,
@@ -531,11 +543,10 @@ def create_staff_account():
             created = True
         except Exception as ce:
             if "already registered" in str(ce).lower():
-                users = sb.auth.admin.list_users()
-                existing = next((u for u in users if u.email == email), None)
+                existing = _find_auth_user_by_email(sb, email)
                 if not existing:
                     return _err(str(ce), 500)
-                user_id = existing.id
+                user_id = existing["id"] if isinstance(existing, dict) else existing.id
                 sb.auth.admin.update_user_by_id(user_id, {"password": password})
                 created = False
             else:

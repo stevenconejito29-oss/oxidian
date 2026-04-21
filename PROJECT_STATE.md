@@ -63,6 +63,64 @@
 - No hubo cambios de DDL ni de RLS en esta iteracion.
 - `database_schema.sql` no requirio actualizacion.
 
+## Iteracion 2026-04-21 - fix de creacion de cuenta del dueno
+
+### Causa raiz
+
+- `api/index.py` manejaba mal el caso de email ya existente en Supabase Auth:
+  - trataba `sb.auth.admin.list_users()` como si devolviera una lista iterable directa
+  - intentaba filtrar `tenant_id` con `.is_("tenant_id", tenant_id)` aunque `tenant_id` no era `null`
+- Eso hacia que la creacion o reactivacion del dueno fallara precisamente cuando habia que reutilizar una cuenta existente o limpiar una membresia previa.
+
+### Implementado
+
+- Nuevo helper puro en `api/_lib/owner_account_helpers.py` para:
+  - normalizar respuestas de `list_users()`
+  - aplicar `eq/null` correctamente en filtros de scope
+- `api/index.py`
+  - ahora usa `_find_auth_user_by_email()` para recuperar usuarios existentes
+  - corrige el filtro previo de membresia del dueno usando `eq` para `tenant_id` no nulo
+  - aplica el mismo criterio al flujo de invitacion del dueno y al alta de staff
+
+### Validacion
+
+- `python -m unittest test_api_owner_account_helpers.py`
+- `python -m py_compile api/index.py api/_lib/owner_account_helpers.py`
+- `npm run build` en `frontend`
+
+## Iteracion 2026-04-21 - deploy Vercel alineado con repo raiz
+
+### Causa raiz
+
+- La configuracion tecnica ya estaba preparada para desplegar frontend y backend serverless desde la raiz con `vercel.json`.
+- Pero `DEPLOY.md` seguia documentando un deploy frontend-only con `Root Directory = frontend`, que dejaba fuera `api/index.py` y confundia la puesta en produccion real.
+
+### Implementado
+
+- `DEPLOY.md`
+  - Reescrito para reflejar el deploy correcto desde la raiz del repo.
+  - Documenta variables obligatorias, flujo CLI/GitHub y checklist post-deploy.
+  - Deja explicito que `VITE_BACKEND_URL` debe quedar vacio en same-domain Vercel.
+- `.env.vercel.example`
+  - Reescrito y alineado con el contrato real de Vercel para este repo.
+  - Aclara que `FRONTEND_URL` debe fijarse con la URL final publica y luego redeplegar.
+
+### Decision de arquitectura
+
+- El camino operativo estable del proyecto pasa a ser un unico deploy Vercel desde la raiz:
+  - frontend compilado desde `frontend`
+  - backend Python serverless servido desde `api/index.py`
+- Se descarta como guia recomendada el deploy frontend-only para este estado del repo.
+
+### Validacion
+
+- Revision manual de coherencia entre `vercel.json`, `DEPLOY.md` y `.env.vercel.example`
+
+### Nota de schema
+
+- No hubo cambios de DDL ni de RLS en esta iteracion.
+- `database_schema.sql` no requirio actualizacion.
+
 ## Iteracion 2026-04-20 - Schema/RLS minimo alineado con el frontend
 
 ### Implementado
