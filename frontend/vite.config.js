@@ -52,6 +52,7 @@ export default defineConfig(({ mode }) => {
     proxy[prefix] = {
       target: localBackendUrl,
       changeOrigin: true,
+      rewrite: (path) => '/api/backend' + path,
     }
   })
 

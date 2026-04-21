@@ -24,10 +24,10 @@ from supabase import create_client, Client
 from api._lib.owner_account_helpers import extract_auth_admin_users, query_eq_or_null
 
 # ── Configuración ───────────────────────────────────────────────────
-SUPABASE_URL         = os.environ.get("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_JWT_SECRET  = os.environ.get("SUPABASE_JWT_SECRET", "")
-SUPER_ADMIN_EMAIL    = os.environ.get("SUPER_ADMIN_EMAIL", "pepemellamoyoo@oxidian.app")
+SUPABASE_URL         = os.environ.get("SUPABASE_URL", "").strip()
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+SUPABASE_JWT_SECRET  = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
+SUPER_ADMIN_EMAIL    = os.environ.get("SUPER_ADMIN_EMAIL", "pepemellamoyoo@oxidian.app").strip()
 
 app = Flask(__name__)
 CORS(app, origins="*", allow_headers=["Content-Type", "Authorization", "X-Tenant-ID"])
