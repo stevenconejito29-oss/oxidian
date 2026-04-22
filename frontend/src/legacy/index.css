@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   CarmoCream — GLOBAL BASE  v12
+   Oxidian — GLOBAL BASE  v12
    Fuentes: Pacifico (display) + Nunito (cuerpo) = igual que Admin
    Paleta: blanco · rosa pastel · verde · dorado — sin negro
    ═══════════════════════════════════════════════════════════ */
@@ -43,7 +43,7 @@ img  { max-width: 100%; height: auto; display: block; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; user-select: none; touch-action: manipulation; }
 a    { text-decoration: none; color: inherit; }
 
-/* ── Paleta global CarmoCream ── */
+/* ── Paleta global Oxidian ── */
 :root {
   --bg:        color-mix(in srgb, var(--brand-surface) 88%, white 12%);
   --white:     #FFFFFF;

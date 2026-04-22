@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════
-   CarmoCream — MenuSectionNav  v14
+   Oxidian — MenuSectionNav  v14
    Sticky · scroll suave · activo verde/rosa · iOS safe
    ═══════════════════════════════════════════════════ */
 
@@ -63,7 +63,7 @@
   .track { cursor: grab; }
 }
 
-/* Activo genérico — rosa CarmoCream */
+/* Activo genérico — acento Oxidian */
 .buttonActive {
   color: #fff;
   border-color: #E8607A;

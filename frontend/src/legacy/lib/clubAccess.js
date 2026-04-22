@@ -8,7 +8,7 @@ export const CLUB_LEVEL_META = {
 
 const ANY_CLUB_META = {
   id: '',
-  label: 'Club CarmoCream',
+  label: 'Club Oxidian',
   shortLabel: 'Club',
   accent: '#1C3829',
   bg: '#ECFDF5',

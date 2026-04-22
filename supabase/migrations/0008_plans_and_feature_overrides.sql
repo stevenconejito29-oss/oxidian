@@ -11,6 +11,17 @@ ALTER TABLE public.tenant_subscriptions
   ADD COLUMN IF NOT EXISTS staff_limit        integer,
   ADD COLUMN IF NOT EXISTS notes              text;
 
+ALTER TABLE public.tenant_subscriptions
+  ALTER COLUMN plan_id SET DEFAULT 'starter',
+  ALTER COLUMN status SET DEFAULT 'active';
+
+ALTER TABLE public.tenant_subscriptions
+  DROP CONSTRAINT IF EXISTS tenant_subscriptions_status_check;
+
+ALTER TABLE public.tenant_subscriptions
+  ADD CONSTRAINT tenant_subscriptions_status_check
+  CHECK (status IN ('active', 'suspended', 'trialing'));
+
 -- 2. Insertar planes por defecto en store_plans (actualizar si existen)
 INSERT INTO public.store_plans (id, name, description, monthly_price, sort_order, feature_bundle, is_active)
 VALUES

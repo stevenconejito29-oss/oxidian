@@ -2,11 +2,54 @@
 
 ## Fecha
 
+- 2026-04-22
 - 2026-04-21
 - 2026-04-20
 - 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-22 - spec de arquitectura multi-store y branch-first
+
+### Implementado
+
+- Se cerraron las decisiones funcionales base del producto Oxidian para la siguiente fase de implementación:
+  - `1 tenant -> múltiples stores`
+  - un tenant puede mezclar nichos distintos por store
+  - el owner entra aunque no tenga stores
+  - el owner crea su primera store con wizard
+  - cada store tiene `modo principal único + módulos extra compatibles`
+  - cada branch tiene página pública propia
+  - cada branch puede personalizar visual + contenido visible
+  - el catálogo base nace en store y la branch decide qué aparece en su página pública
+- Se redactó la spec formal:
+  - [docs/superpowers/specs/2026-04-22-oxidian-multi-store-branch-platform-design.md](/abs/path/C:/Users/steven/Downloads/carmocream/carmocream/docs/superpowers/specs/2026-04-22-oxidian-multi-store-branch-platform-design.md)
+
+### Decision de arquitectura
+
+- El eje del sistema queda definido como:
+  - `super_admin -> tenant -> stores -> branches`
+- El nicho, modo principal y módulos viven en `store`, no en `tenant`.
+- La experiencia pública es `branch-first`, no `store-first`.
+- La personalización de sedes se resuelve como `base en store + overrides en branch`.
+- El login staff debe dejar de depender de pseudo-sesiones legacy sin JWT válido.
+- El checkout público debe pasar por una vía segura server-side o RPC controlada.
+
+### Validacion
+
+- Validación funcional con el usuario sobre:
+  - jerarquía de negocio
+  - modelo multi-store
+  - creación de store por wizard
+  - modo principal único
+  - branch pública propia
+  - personalización visual + contenido por sede
+  - catálogo base en store con visibilidad por branch
+
+### Nota de schema
+
+- Aún no se modificó SQL en esta iteración.
+- La próxima fase debe alinear `database_schema.sql` y `supabase/migrations/RESET_COMPLETE.sql` con el contrato de la spec.
 
 ## Iteracion 2026-04-21 - pipeline de admision y acceso inicial del dueno
 
@@ -466,11 +509,11 @@
 
 ### Implementado
 
-- Se agrego `invite_auth_user_by_email()` en [backend/app/core/accounts.py](C:/Users/steven/Downloads/carmocream/carmocream/backend/app/core/accounts.py) usando el Admin API de Supabase del lado servidor.
-- Se agrego `POST /admin/pipeline/<request_id>/invite` en [backend/app/modules/admin/routes.py](C:/Users/steven/Downloads/carmocream/carmocream/backend/app/modules/admin/routes.py).
-- El boton "Aprobar y enviar invitacion" del `PipelineTab` ahora llama a Flask en lugar de intentar `sb.auth.admin` desde el navegador en [frontend/src/modules/admin/pages/SuperAdminPage.jsx](C:/Users/steven/Downloads/carmocream/carmocream/frontend/src/modules/admin/pages/SuperAdminPage.jsx).
+- Se agrego `invite_auth_user_by_email()` en `backend/app/core/accounts.py` usando el Admin API de Supabase del lado servidor.
+- Se agrego `POST /admin/pipeline/<request_id>/invite` en `backend/app/modules/admin/routes.py`.
+- El boton "Aprobar y enviar invitacion" del `PipelineTab` ahora llama a Flask en lugar de intentar `sb.auth.admin` desde el navegador en `frontend/src/modules/admin/pages/SuperAdminPage.jsx`.
 - Se restauro el tab `owners` en la barra de tabs del Super Admin.
-- Se corrigio un bloque JSX duplicado en [frontend/src/modules/branch/pages/BranchAdminPage.jsx](C:/Users/steven/Downloads/carmocream/carmocream/frontend/src/modules/branch/pages/BranchAdminPage.jsx) que estaba rompiendo el build.
+- Se corrigio un bloque JSX duplicado en `frontend/src/modules/branch/pages/BranchAdminPage.jsx` que estaba rompiendo el build.
 
 ### Validacion
 
@@ -493,8 +536,8 @@
 
 ### Nuevos archivos
 
-- [supabase/migrations/0005_testing_readiness.sql](C:/Users/steven/Downloads/carmocream/carmocream/supabase/migrations/0005_testing_readiness.sql)
-- [scripts/prepare_database_for_testing.sql](C:/Users/steven/Downloads/carmocream/carmocream/scripts/prepare_database_for_testing.sql)
+- `supabase/migrations/0005_testing_readiness.sql`
+- `scripts/prepare_database_for_testing.sql`
 
 ### Que resuelve
 
@@ -630,3 +673,107 @@
 ### Nota de entorno
 
 - `backend/.venv/Scripts/pip.exe` estaba resolviendo paquetes en otro entorno externo (`nuevoproyectooxidian`). Para verificar el backend local de este repo hubo que instalar `Flask-Limiter==3.9.2` usando `backend/.venv/Scripts/python.exe -m pip install ...`, que si apunta al entorno correcto.
+
+## Iteracion 2026-04-21 - limpieza activa de branding legacy y fix real del deploy serverless
+
+### Causa raiz
+
+- El deploy de Vercel estaba fallando por una causa concreta en `api/middleware/resolve-store.js`:
+  - la funcion estaba forzada a `runtime: 'edge'`
+  - pero dependia de `@supabase/supabase-js`, modulo no soportado por ese runtime en este proyecto
+- Ademas, seguian quedando rastros activos de branding legacy en branding visible, service worker y claves de sesion/runtime del frontend legacy, lo que mezclaba identidad vieja con Oxidian.
+
+### Implementado
+
+- `api/middleware/resolve-store.js`
+  - se elimina el runtime `edge`
+  - la funcion queda como serverless compatible con `@supabase/supabase-js`
+- Limpieza de branding activo a `Oxidian` en:
+  - `api/manifest.js`
+  - `frontend/public/service-worker.js`
+  - `frontend/index.html`
+  - `frontend/.env`
+  - `frontend/.env.production`
+  - `frontend/src/legacy/components/LoyaltyWidget.jsx`
+  - `frontend/src/legacy/components/PostOrderScreen.jsx`
+  - `frontend/src/legacy/pages/PedidosContent.jsx`
+  - `frontend/src/legacy/pages/AdminBusinessTab.jsx`
+  - `frontend/src/legacy/pages/Menu.jsx`
+  - `frontend/src/legacy/lib/storeExperience.js`
+  - `frontend/src/legacy/lib/cashReporting.js`
+  - `frontend/src/legacy/lib/clubAccess.js`
+- Limpieza de claves activas de sesion y contexto:
+  - `frontend/src/legacy/lib/appSession.js`
+  - `frontend/src/legacy/lib/currentStore.js`
+  - `frontend/src/legacy/main.jsx`
+  - `frontend/src/legacy/pages/Admin.jsx`
+  - `frontend/src/legacy/pages/Pedidos.jsx`
+  - `frontend/src/legacy/pages/Repartidor.jsx`
+  - `frontend/src/legacy/lib/desktopAdminAccess.js`
+  - `frontend/src/legacy/lib/desktopChatbotRuntime.js`
+  - `frontend/src/legacy/lib/chatbotConfig.js`
+  - `frontend/src/legacy/pages/AdminChatbotTab.jsx`
+- `test_oxidian_branding_and_runtime_contract.py`
+  - ahora fija tanto la ausencia de `runtime: 'edge'` como la ausencia de branding y claves activas viejas en los archivos que hoy participan en runtime real
+
+### Decision de arquitectura
+
+- La limpieza de marca se limita a codigo fuente activo que participa en deploy, runtime, branding visible o estado de sesion.
+- No se tratan como prioridad artefactos generados, caches o historico del repo; eso no corrige el flujo real ni el deploy.
+- Los rastros que aun puedan aparecer en busquedas amplias del arbol legacy quedan reducidos a comentarios o cabeceras de archivos, no a comportamiento de runtime.
+
+### Validacion prevista
+
+- `backend/.venv/Scripts/python.exe -m unittest test_oxidian_branding_and_runtime_contract.py`
+- `npm run build` en `frontend`
+
+## Iteracion 2026-04-22 - purga completa de legado y coherencia Oxidian
+
+### Causa raiz
+
+- Todavia quedaban restos del branding anterior en claves `cc_*`, comentarios de archivos legacy, SQL de referencia, scripts de deploy, artefactos generados y documentacion interna.
+- Eso ya no rompia el runtime principal, pero seguia ensuciando el repo, mezclando identidad y generando ruido al revisar el codigo o preparar despliegues.
+
+### Implementado
+
+- Limpieza de claves legacy aun activas:
+  - `frontend/src/legacy/components/PostOrderScreen.jsx`
+  - `frontend/src/legacy/lib/useLoyalty.js`
+  - `frontend/src/legacy/lib/usePushSubscription.js`
+  - `frontend/src/legacy/pages/AffiliatePortal.jsx`
+- Limpieza de textos y referencias hardcodeadas:
+  - `frontend/src/legacy/components/Cart.jsx`
+  - `frontend/src/legacy/main.jsx`
+  - `frontend/src/legacy/pages/Menu.jsx`
+  - `frontend/src/legacy/pages/RepartidorContent.jsx`
+- Limpieza de comentarios y cabeceras legacy en CSS/JS de `frontend/src/legacy/**`.
+- Documentacion y SQL alineados a Oxidian:
+  - `README.md`
+  - `DEPLOY.md`
+  - `database_schema.sql`
+  - `scripts/supabase_single_setup.sql`
+  - `supabase/migrations/RESET_COMPLETE.sql`
+  - `MEMORY_LOG.md`
+  - `docs/architecture/reuse-map.md`
+  - `docs/superpowers/**`
+- Scripts de deploy rehechos para usar la raiz real del repo:
+  - `deploy.bat`
+  - `deploy-vercel.bat`
+- Purga de artefactos no fuente:
+  - eliminado `frontend/assets/`
+  - eliminados `__pycache__` versionados fuera de `backend/.venv`
+  - eliminado `docs/legacy-docs/CODEX_MEMORY.md`
+- `test_oxidian_branding_and_runtime_contract.py`
+  - ampliado para cubrir docs, SQL, scripts y nuevas claves legacy prohibidas
+
+### Decision de arquitectura
+
+- Se eliminan rastros que contaminan codigo, deploy o lectura operativa del repo.
+- No se renombra la carpeta fisica del workspace desde dentro del repositorio; eso queda fuera del alcance del codigo y no afecta el comportamiento de Oxidian.
+- La limpieza se deja protegida por test para evitar reintroducciones accidentales.
+
+### Verificacion
+
+- busqueda global sin coincidencias para `CarmoCream`, `carmocream`, `cc_stamps_`, `cc_vid_`, `cc_loyalty_local_`, `cc_push_endpoint`, `cc_affiliate_code_`
+- `backend/.venv/Scripts/python.exe -m unittest test_oxidian_branding_and_runtime_contract.py`
+- `npm run build` en `frontend`

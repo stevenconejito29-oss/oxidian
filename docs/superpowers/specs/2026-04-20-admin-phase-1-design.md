@@ -48,11 +48,11 @@ The redesign must follow these principles:
 
 The implementation must respect the current app structure:
 
-- Router tree is centered in [AppRouter.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\router\AppRouter.jsx)
-- Layout shell is [DashboardLayout.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\app\DashboardLayout.jsx)
-- Shared UI primitives are in [OxidianDS.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\shared\ui\OxidianDS.jsx)
-- Direct data access is in [supabaseApi.js](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\shared\lib\supabaseApi.js)
-- Role and membership state is in [AuthProvider.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\providers\AuthProvider.jsx)
+- Router tree is centered in `frontend/src/core/router/AppRouter.jsx`
+- Layout shell is `frontend/src/core/app/DashboardLayout.jsx`
+- Shared UI primitives are in `frontend/src/shared/ui/OxidianDS.jsx`
+- Direct data access is in `frontend/src/shared/lib/supabaseApi.js`
+- Role and membership state is in `frontend/src/core/providers/AuthProvider.jsx`
 
 Known hard constraint:
 
@@ -230,17 +230,17 @@ If a page needs a new aggregate or list shape, add it in `supabaseApi.js` instea
 
 Phase 1 is expected to touch at least these files:
 
-- [frontend/src/core/providers/AuthProvider.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\providers\AuthProvider.jsx)
-- [frontend/src/core/app/DashboardLayout.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\app\DashboardLayout.jsx)
-- [frontend/src/shared/ui/OxidianDS.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\shared\ui\OxidianDS.jsx)
-- [frontend/src/shared/lib/supabaseApi.js](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\shared\lib\supabaseApi.js)
-- [frontend/src/modules/admin/pages/SuperAdminPage.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\modules\admin\pages\SuperAdminPage.jsx)
-- [frontend/src/modules/tenant/pages/TenantAdminPage.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\modules\tenant\pages\TenantAdminPage.jsx)
+- `frontend/src/core/providers/AuthProvider.jsx`
+- `frontend/src/core/app/DashboardLayout.jsx`
+- `frontend/src/shared/ui/OxidianDS.jsx`
+- `frontend/src/shared/lib/supabaseApi.js`
+- `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
+- `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
 
 Compatibility-only review may also touch:
 
-- [frontend/src/core/router/AppRouter.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\core\router\AppRouter.jsx)
-- [frontend/src/modules/branch/pages/BranchAdminPage.jsx](C:\Users\steven\Downloads\carmocream\carmocream\frontend\src\modules\branch\pages\BranchAdminPage.jsx)
+- `frontend/src/core/router/AppRouter.jsx`
+- `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
 
 ## Out of scope for Phase 1
 

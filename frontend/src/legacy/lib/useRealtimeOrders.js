@@ -1,5 +1,5 @@
 /**
- * useRealtimeOrders.js — CarmoCream
+ * useRealtimeOrders.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Hook de suscripción en tiempo real a la tabla `orders`.
  * Reemplaza el polling manual de 18-25 s con Supabase Realtime.

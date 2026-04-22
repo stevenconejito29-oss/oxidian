@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carmocream-v7'
+const CACHE_NAME = 'oxidian-v1'
 const SHELL_URLS = [
   '/',
   '/menu',
@@ -70,7 +70,7 @@ self.addEventListener('push', event => {
     payload = event.data?.json() || {}
   } catch {
     payload = {
-      title: 'CarmoCream',
+      title: 'Oxidian',
       body: event.data?.text() || 'Tienes un mensaje nuevo.',
     }
   }
@@ -90,7 +90,7 @@ self.addEventListener('push', event => {
 
   const type = payload.type || 'promo'
   const emoji = payload.emoji || '🍓'
-  const title = payload.title || `${emoji} CarmoCream`
+  const title = payload.title || `${emoji} Oxidian`
   const body = payload.body || 'Tenemos algo especial para ti.'
   const actions = payload.actions || actionsByType[type] || []
   const vibrate = vibrationByType[type] || [200, 100, 200]
@@ -100,7 +100,7 @@ self.addEventListener('push', event => {
       body,
       icon: payload.icon || '/logo.png',
       badge: '/logo.png',
-      tag: `cc-${type}`,
+      tag: `oxidian-${type}`,
       renotify: true,
       vibrate,
       actions,

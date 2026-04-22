@@ -1,4 +1,4 @@
-// src/lib/useSettings.js — CarmoCream v2
+// src/lib/useSettings.js — Oxidian v2
 // Settings en tiempo real. Caché por storeId (Map) para soporte multi-tienda.
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'

@@ -373,8 +373,8 @@ export default function AdminBusinessTab({ products = [], onOpenOrders, onOpenSt
       entries,
       salesData,
       date: ticketDate,
-      businessName: settingsMap.business_name || 'CarmoCream',
-      headerNote: settingsMap.cash_ticket_header || 'Carmona · Ticket operativo de caja',
+      businessName: settingsMap.business_name || 'Oxidian',
+      headerNote: settingsMap.cash_ticket_header || 'Oxidian · Ticket operativo de caja',
       footerText: settingsMap.cash_ticket_footer || 'Documento interno de caja diaria',
     })
   }

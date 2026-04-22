@@ -17,7 +17,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
   || process.env.VITE_SUPABASE_ANON_KEY
 
 const DEFAULTS = {
-  color: '#2D6A4F', bg: '#FFF5EE', name: 'CarmoCream', icon: '/logo.png',
+  color: '#2D6A4F', bg: '#FFF5EE', name: 'Oxidian', icon: '/logo.png',
 }
 
 function slugify(str) {

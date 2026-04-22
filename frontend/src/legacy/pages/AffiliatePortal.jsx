@@ -129,7 +129,7 @@ function MiniChart({ data }) {
 }
 
 function getAffiliateSessionKey(storeId) {
-  return `cc_affiliate_code_${storeId || 'default'}`
+  return `oxidian_affiliate_code_${storeId || 'default'}`
 }
 
 function getAffiliateMessageStorageKey(code, storeId) {

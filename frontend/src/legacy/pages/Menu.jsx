@@ -153,7 +153,7 @@ export default function Menu() {
   }, [activeStoreId])
 
   const [customerPhone, setCustomerPhone] = useState(
-    () => { try { return JSON.parse(localStorage.getItem('carmocream_customer') || '{}').phone || null } catch { return null } }
+    () => { try { return JSON.parse(localStorage.getItem('oxidian_customer') || '{}').phone || null } catch { return null } }
   )
   const loyalty = useLoyalty({ phone: customerPhone, storeId: activeStoreId })
   const { cart, cartCount, cartTotal, addToCart, updateQty, removeItem, updateItem, clearCart, comboReachedLimit, productReachedLimit } = useCart()
@@ -166,7 +166,7 @@ export default function Menu() {
   const [clubPanelOpen,   setClubPanelOpen]   = useState(false)
   const [searchQuery,     setSearchQuery]     = useState('')
   const [savedCustomer,   setSavedCustomer]   = useState(() => {
-    try { const v = localStorage.getItem('carmocream_customer'); return v ? JSON.parse(v) : null } catch { return null }
+    try { const v = localStorage.getItem('oxidian_customer'); return v ? JSON.parse(v) : null } catch { return null }
   })
   const sectionRefs = useRef({})
   const searchInputRef = useRef(null)
@@ -327,7 +327,7 @@ export default function Menu() {
     loyalty.trackOrder(payload.total, savedCustomer?.phone || customerPhone)
   }
   function handleCustomerSaved(data) {
-    try { localStorage.setItem('carmocream_customer', JSON.stringify(data)) } catch {}
+    try { localStorage.setItem('oxidian_customer', JSON.stringify(data)) } catch {}
     setSavedCustomer(data)
     if (data?.phone) { setCustomerPhone(data.phone); loyalty.linkPhone(data.phone) }
   }
@@ -1391,7 +1391,7 @@ export default function Menu() {
                   </div>
                 </div>
                 <p className={styles.reviewText}>{r.text}</p>
-                <span className={styles.reviewMeta}>Carmona - Cliente verificado</span>
+                <span className={styles.reviewMeta}>Cliente verificado</span>
               </div>
             ))}
           </div>

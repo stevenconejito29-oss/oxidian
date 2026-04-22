@@ -1,5 +1,5 @@
 /**
- * useMenuData.js — CarmoCream
+ * useMenuData.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Re-exporta useRealtimeProducts con el mismo API público que
  * antes para que Menu.jsx no necesite cambios de import.

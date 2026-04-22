@@ -174,7 +174,7 @@ npm.cmd run build
 Workdir:
 
 ```text
-C:\Users\steven\Downloads\carmocream\carmocream\frontend
+<repo-root>\frontend
 ```
 
 Expected: Vite build completes successfully.
@@ -306,7 +306,7 @@ npm.cmd run build
 Workdir:
 
 ```text
-C:\Users\steven\Downloads\carmocream\carmocream\frontend
+<repo-root>\frontend
 ```
 
 Expected: nav tests pass, build stays green.
@@ -492,7 +492,7 @@ npm.cmd run build
 Workdir:
 
 ```text
-C:\Users\steven\Downloads\carmocream\carmocream\frontend
+<repo-root>\frontend
 ```
 
 Expected: tests pass, Vite build passes, no JSX/import regressions.
@@ -663,7 +663,7 @@ npm.cmd run build
 Workdir:
 
 ```text
-C:\Users\steven\Downloads\carmocream\carmocream\frontend
+<repo-root>\frontend
 ```
 
 Expected: tests pass and build stays green.
@@ -723,7 +723,7 @@ npm.cmd run build
 Workdir:
 
 ```text
-C:\Users\steven\Downloads\carmocream\carmocream\frontend
+<repo-root>\frontend
 ```
 
 Expected:
@@ -784,4 +784,3 @@ No spec gaps remain for Phase 1.
 - Membership helper names are consistent between Task 1 tests and implementation.
 - `buildSuperAdminSummary` and `buildSuperAdminAlerts` are consistent between Task 3 tests and implementation.
 - `buildTenantSummary` and `buildTenantPlanBanner` are consistent between Task 4 tests and implementation.
-

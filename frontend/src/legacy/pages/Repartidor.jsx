@@ -1,4 +1,4 @@
-// Repartidor.jsx — CarmoCream
+// Repartidor.jsx — Oxidian
 // Sesión en localStorage con TTL 8h
 // (sessionStorage se borra en iOS Safari al volver desde otra app)
 
@@ -8,7 +8,7 @@ import RepartidorContent from './RepartidorContent'
 import StaffPWARequired from './StaffPWARequired'
 import { sendStaffOfflineBeacon, setStaffOnlineState, startStaffHeartbeat, stopStaffHeartbeat } from '../lib/staffPresence'
 
-const SESSION_KEY = 'carmocream_staff_repartidor'
+const SESSION_KEY = 'oxidian_staff_riders'
 const SESSION_TTL = 8 * 60 * 60 * 1000
 
 function loadSession() {

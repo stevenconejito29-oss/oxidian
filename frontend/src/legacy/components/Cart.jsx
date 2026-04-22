@@ -1,4 +1,4 @@
-// Cart.jsx — CarmoCream
+// Cart.jsx — Oxidian
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildOrderItem } from '../lib/orderUtils'
@@ -208,7 +208,7 @@ export default function Cart({
   const affDiscount = (affInfo?.name && affInfo.discount > 0)
     ? subtotal * Number(affInfo.discount) / 100
     : 0
-  // Descuento Club CarmoCream (nivel plata/oro/diamante) — se aplica sobre el subtotal
+  // Descuento Club Oxidian (nivel plata/oro/diamante) — se aplica sobre el subtotal
   // Solo si no hay ya un cupón que dé más descuento
   const clubDiscountPct = loyaltyDiscount || 0
   const clubDiscount = clubDiscountPct > 0 && discount === 0

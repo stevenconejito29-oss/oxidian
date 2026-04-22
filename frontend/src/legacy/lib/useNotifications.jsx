@@ -1,4 +1,4 @@
-// useNotifications.jsx — CarmoCream v2
+// useNotifications.jsx — Oxidian v2
 // Sistema centralizado: sonido Web Audio API + Push API + toasts premium con prioridad
 
 import { useEffect, useRef } from 'react'

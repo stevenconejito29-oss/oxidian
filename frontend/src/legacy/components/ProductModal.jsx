@@ -1,5 +1,5 @@
 /**
- * ProductModal.jsx — CarmoCream v9
+ * ProductModal.jsx — Oxidian v9
  * Jerarquía clara: producto → tamaño → toppings → cantidad → añadir
  * Secciones numeradas con iconos, toppings con precio destacado
  */

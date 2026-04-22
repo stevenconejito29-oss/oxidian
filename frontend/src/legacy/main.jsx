@@ -138,7 +138,7 @@ function MenuEntry() {
 // Lee el emoji del tenant activo desde sessionStorage (escrito por resolveDomainStoreContext)
 function getLoaderEmoji() {
   try {
-    const raw = window.sessionStorage?.getItem('cc_domain_store_context')
+    const raw = window.sessionStorage?.getItem('oxidian_domain_store_context')
     if (raw) {
       const ctx = JSON.parse(raw)
       if (ctx?.emoji) return ctx.emoji
@@ -314,7 +314,7 @@ const router = createBrowserRouter([
 
   // ── Rutas con slug de tienda — /s/:storeSlug/<sección> ──────────────────────
   // Renderizan la página directamente. currentStore.js detecta el slug del path.
-  // No hay redirect: la URL /s/carmona/menu permanece limpia en el navegador.
+  // No hay redirect: la URL /s/:storeSlug/menu permanece limpia en el navegador.
   {
     path: '/s/:storeSlug',
     element: <LazyPage Component={Menu} />,

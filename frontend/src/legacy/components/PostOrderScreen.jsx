@@ -1,5 +1,5 @@
 /**
- * PostOrderScreen.jsx — CarmoCream v7
+ * PostOrderScreen.jsx — Oxidian v7
  * Un solo mensaje limpio · Confetti · Club · Sin fases
  */
 import React, { useEffect, useState } from 'react'
@@ -39,7 +39,7 @@ export async function sendReviewLinkWhatsApp({ orderNum, reviewToken, customerPh
     if (reviewToken) reviewParams.set('token', String(reviewToken).trim())
     const reviewUrl = `${(import.meta.env.VITE_PUBLIC_WEB_URL || window.location.origin || '').replace(/\/$/, '')}/menu?${reviewParams.toString()}`
     const msg = encodeURIComponent(
-      `¡Hola! 👋 Soy ${businessName || 'CarmoCream'}.\n\n` +
+      `¡Hola! 👋 Soy ${businessName || 'Oxidian'}.\n\n` +
       `Esperamos que hayas disfrutado tu pedido #${orderNum} 🍓\n\n` +
       `Si tienes un momento, nos encantaría conocer tu opinión:\n👉 ${reviewUrl}\n\n¡Gracias! 💛`
     )
@@ -61,7 +61,7 @@ export default function PostOrderScreen({ order, onClose, savedCustomer, loyalty
   useEffect(() => {
     // guardar stamp local
     try {
-      const key = savedCustomer?.phone ? `cc_stamps_${savedCustomer.phone}` : 'cc_stamps_guest'
+      const key = savedCustomer?.phone ? `oxidian_stamps_${savedCustomer.phone}` : 'oxidian_stamps_guest'
       const prev = parseInt(localStorage.getItem(key) || '0', 10)
       localStorage.setItem(key, prev + 1)
     } catch {}
@@ -154,7 +154,7 @@ export default function PostOrderScreen({ order, onClose, savedCustomer, loyalty
             }}>
               <span style={{ fontSize:'1.8rem' }}>{clubLevel.emoji || '⭐'}</span>
               <div>
-                <div style={{ fontSize:'0.68rem', fontWeight:900, color:'#1A4733', letterSpacing:'.1em' }}>CLUB CARMOCREAM · {clubLevel.label?.toUpperCase()}</div>
+                <div style={{ fontSize:'0.68rem', fontWeight:900, color:'#1A4733', letterSpacing:'.1em' }}>CLUB OXIDIAN · {clubLevel.label?.toUpperCase()}</div>
                 <div style={{ fontSize:'0.78rem', color:'rgba(26,71,51,.75)', marginTop:3 }}>
                   {clubOrders} pedido{clubOrders !== 1 ? 's' : ''} acumulados
                   {clubLevel.discount_percent > 0 && ` · ${clubLevel.discount_percent}% de descuento activo`}

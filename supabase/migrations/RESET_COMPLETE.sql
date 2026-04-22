@@ -385,6 +385,52 @@ create index products_store_id_idx on public.products(store_id);
 create index products_store_active_idx on public.products(store_id, is_active) where is_active = true;
 create index products_store_tenant_idx on public.products(store_id, tenant_id);
 
+create table public.categories (
+  id            uuid primary key default gen_random_uuid(),
+  store_id      text not null references public.stores(id) on delete cascade,
+  tenant_id     uuid references public.tenants(id) on delete cascade,
+  branch_id     uuid references public.branches(id) on delete set null,
+  name          text not null,
+  description   text,
+  image_url     text,
+  sort_order    integer default 0,
+  is_active     boolean not null default true,
+  category_type text default 'product',
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index categories_store_idx on public.categories(store_id);
+
+alter table public.products
+  add column if not exists category_id uuid references public.categories(id) on delete set null,
+  add column if not exists compare_price numeric(10,2),
+  add column if not exists image_url text,
+  add column if not exists is_featured boolean not null default false,
+  add column if not exists track_stock boolean not null default false,
+  add column if not exists stock_quantity integer not null default 0,
+  add column if not exists service_duration_minutes integer,
+  add column if not exists has_variants boolean not null default false,
+  add column if not exists variants jsonb not null default '[]',
+  add column if not exists modifiers jsonb not null default '[]';
+
+alter table public.products
+  alter column tags type text[] using
+    case
+      when tags is null then '{}'::text[]
+      when jsonb_typeof(tags) = 'array' then ARRAY(SELECT jsonb_array_elements_text(tags))
+      else '{}'::text[]
+    end;
+
+alter table public.products
+  alter column tags set default '{}'::text[],
+  alter column available set default true,
+  alter column is_active set default true,
+  alter column out_of_stock set default false;
+
+alter table public.products
+  add column if not exists sold_today integer default 0;
+
 -- 5.2 Categorías de toppings
 create table public.topping_categories (
   id              uuid primary key default gen_random_uuid(),
@@ -446,7 +492,7 @@ create table public.orders (
   store_id         text not null references public.stores(id) on delete cascade,
   tenant_id        uuid references public.tenants(id) on delete cascade,
   branch_id        uuid references public.branches(id) on delete set null,
-  order_number     text,
+  order_number     integer,
   status           text not null default 'pending'
                      check (status in ('pending','preparing','ready','delivering','delivered','cancelled')),
   customer_name    text,
@@ -471,6 +517,9 @@ create index orders_store_id_idx on public.orders(store_id);
 create index orders_branch_status_idx on public.orders(branch_id, status, created_at desc);
 create index orders_store_date_idx on public.orders(store_id, created_at desc);
 create index orders_customer_phone_idx on public.orders(store_id, customer_phone);
+
+alter table public.orders
+  alter column order_number type integer using nullif(order_number::text, '')::integer;
 
 -- ── 7. STOCK ─────────────────────────────────────────────────────
 create table public.stock_items (
@@ -822,9 +871,9 @@ create table public.landing_requests (
 create table public.tenant_subscriptions (
   id                     uuid primary key default gen_random_uuid(),
   tenant_id              uuid not null references public.tenants(id) on delete cascade,
-  plan_id                text not null default 'growth',
+  plan_id                text not null default 'starter',
   status                 text not null default 'active'
-                           check (status in ('active','cancelled','past_due','trialing')),
+                           check (status in ('active','suspended','trialing')),
   feature_overrides      jsonb not null default '{}'::jsonb,
   notes                  text,
   current_period_end     timestamptz,
@@ -833,6 +882,16 @@ create table public.tenant_subscriptions (
   updated_at             timestamptz not null default now(),
   unique (tenant_id)
 );
+
+alter table public.tenant_subscriptions
+  alter column plan_id set default 'starter';
+
+alter table public.tenant_subscriptions
+  drop constraint if exists tenant_subscriptions_status_check;
+
+alter table public.tenant_subscriptions
+  add constraint tenant_subscriptions_status_check
+  check (status in ('active', 'suspended', 'trialing'));
 
 -- ══════════════════════════════════════════════════════════════════
 -- SECCIÓN 2: FUNCIONES DE SEGURIDAD
@@ -1189,6 +1248,23 @@ create policy branches_scoped_manage on public.branches
   using (public.can_access_scope(tenant_id, store_id, id))
   with check (public.can_access_scope(tenant_id, store_id, id));
 
+alter table public.categories enable row level security;
+drop policy if exists categories_super_admin_all on public.categories;
+create policy categories_super_admin_all on public.categories
+  for all to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
+
+drop policy if exists categories_scoped_manage on public.categories;
+create policy categories_scoped_manage on public.categories
+  for all to authenticated
+  using (public.can_access_scope(tenant_id, store_id, branch_id))
+  with check (public.can_access_scope(tenant_id, store_id, branch_id));
+
+drop policy if exists categories_public_read on public.categories;
+create policy categories_public_read on public.categories
+  for select to anon, authenticated
+  using (exists(select 1 from public.stores s
+    where s.id = categories.store_id and s.public_visible = true and s.status = 'active'));
+
 -- user_memberships: dos políticas sin recursión
 -- 1. Cada usuario lee sus propias filas (sin llamar funciones externas)
 create policy user_memberships_own_read on public.user_memberships
@@ -1214,7 +1290,7 @@ create policy tenant_subscriptions_scoped on public.tenant_subscriptions
 -- Lectura pública del catálogo (clientes sin login)
 create policy products_public_read on public.products
   for select to anon, authenticated
-  using (available = true and is_active = true
+  using (available = true and is_active = true and out_of_stock = false
     and exists(select 1 from public.stores s
       where s.id = products.store_id and s.public_visible = true and s.status = 'active'));
 

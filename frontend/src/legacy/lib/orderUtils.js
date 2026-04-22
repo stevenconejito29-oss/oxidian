@@ -1,5 +1,5 @@
 /**
- * orderUtils.js — CarmoCream
+ * orderUtils.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Funciones puras compartidas entre Admin, Cocina y Repartidor.
  * Centraliza la lógica de normalización y formato de pedidos.

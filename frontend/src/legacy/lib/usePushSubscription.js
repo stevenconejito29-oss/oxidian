@@ -1,4 +1,4 @@
-// usePushSubscription.js — CarmoCream v1
+// usePushSubscription.js — Oxidian v1
 // Gestiona el ciclo completo: permiso → subscripción VAPID → guardado Supabase → renovación
 //
 // SETUP REQUERIDO (una sola vez):
@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || ''
-const STORAGE_KEY  = 'cc_push_endpoint'
+const STORAGE_KEY  = 'oxidian_push_endpoint'
 
 // Convierte base64url a Uint8Array (para VAPID)
 function urlBase64ToUint8Array(base64String) {

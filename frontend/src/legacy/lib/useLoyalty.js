@@ -28,7 +28,7 @@ function detectSource() {
 
 function getVisitorId(storeId = DEFAULT_STORE_ID) {
   try {
-    const storageKey = `cc_vid_${normalizeStoreId(storeId)}`
+    const storageKey = `oxidian_vid_${normalizeStoreId(storeId)}`
     let visitorId = localStorage.getItem(storageKey)
     if (!visitorId) {
       visitorId = crypto.randomUUID
@@ -82,7 +82,7 @@ function computeLevel(orders, levels) {
 
 function getLocalState(storeId = DEFAULT_STORE_ID) {
   try {
-    const state = localStorage.getItem(`cc_loyalty_local_${normalizeStoreId(storeId)}`)
+    const state = localStorage.getItem(`oxidian_loyalty_local_${normalizeStoreId(storeId)}`)
     return state ? JSON.parse(state) : { order_count: 0, total_spent: 0, level: 'hierro' }
   } catch {
     return { order_count: 0, total_spent: 0, level: 'hierro' }
@@ -91,7 +91,7 @@ function getLocalState(storeId = DEFAULT_STORE_ID) {
 
 function saveLocalState(storeId, state) {
   try {
-    localStorage.setItem(`cc_loyalty_local_${normalizeStoreId(storeId)}`, JSON.stringify(state))
+    localStorage.setItem(`oxidian_loyalty_local_${normalizeStoreId(storeId)}`, JSON.stringify(state))
   } catch {}
 }
 

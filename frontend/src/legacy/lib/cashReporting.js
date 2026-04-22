@@ -166,8 +166,8 @@ export function printDailyCashTicket({
   entries,
   salesData,
   date,
-  businessName = 'CarmoCream',
-  headerNote = 'Carmona · Contabilidad diaria',
+  businessName = 'Oxidian',
+  headerNote = 'Oxidian · Contabilidad diaria',
   footerText = 'Documento generado automaticamente - no valido como factura',
 }) {
   const dateStr = formatCashDate(date)

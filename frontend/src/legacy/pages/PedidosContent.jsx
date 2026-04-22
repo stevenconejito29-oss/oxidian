@@ -1,4 +1,4 @@
-// PedidosContent.jsx — CarmoCream Cocina v5 — Tablet optimizado
+// PedidosContent.jsx — Oxidian Cocina v5 — Tablet optimizado
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRealtimeOrders } from '../lib/useRealtimeOrders'
@@ -33,7 +33,7 @@ const STATE = {
 }
 
 // ─── impresión ──────────────────────────────────────────────
-function printTicket(order, businessName = 'CarmoCream') {
+function printTicket(order, businessName = 'Oxidian') {
   const win = window.open('', '_blank', 'width=380,height=640')
   if (!win) { toast.error('Permite ventanas emergentes'); return }
   const now = new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -51,7 +51,7 @@ function printTicket(order, businessName = 'CarmoCream') {
     }
     return `<div style="margin:8px 0;padding-bottom:8px;border-bottom:1px dotted #ddd"><b>${item.emoji || '🍨'} ${item.product_name}${isGiftOrderItem(item) ? ' · REGALO CLUB' : ''}${size}</b>${item.qty > 1 ? ` ×${item.qty}` : ''}${t.length ? `<div style="font-size:12px;color:#555;padding-left:14px">${t.join(', ')}</div>` : ''}</div>`
   }).join('')
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:monospace;font-size:13px;padding:12px;width:72mm}h2{font-size:22px;margin:4px 0}hr{border:none;border-top:1px dashed #999;margin:8px 0}.stamp{background:#16A34A;color:white;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:bold}@media print{body{padding:0}}</style></head><body><div style="text-align:center"><div style="font-size:16px;font-weight:900;color:#2D6A4F">${businessName}</div><h2>#${order.order_number}</h2><div style="font-size:11px;color:#999">${now}</div><div class="stamp">LISTO PARA REPARTIR</div></div><hr><div style="font-size:12px;color:#888">CLIENTE</div><div style="font-size:15px;font-weight:900">${order.customer_name || '—'}</div><div style="font-size:12px;color:#555">${order.address || order.delivery_address || ''}</div>${order.notes ? `<div style="background:#FEF2F2;padding:5px 8px;margin-top:6px;font-size:11px;font-weight:700;color:#B91C1C;border-radius:3px">⚠️ ${order.notes}</div>` : ''}<hr><div style="font-size:12px;color:#888">PRODUCTOS</div>${itemsHtml}<hr><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900"><span>TOTAL</span><span style="color:#2D6A4F">€${Number(order.total || 0).toFixed(2)}</span></div><div style="text-align:center;margin-top:10px;font-size:10px;color:#aaa">CarmoCream · Carmona</div><script>window.onload=()=>window.print()<\/script></body></html>`)
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:monospace;font-size:13px;padding:12px;width:72mm}h2{font-size:22px;margin:4px 0}hr{border:none;border-top:1px dashed #999;margin:8px 0}.stamp{background:#16A34A;color:white;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:bold}@media print{body{padding:0}}</style></head><body><div style="text-align:center"><div style="font-size:16px;font-weight:900;color:#2D6A4F">${businessName}</div><h2>#${order.order_number}</h2><div style="font-size:11px;color:#999">${now}</div><div class="stamp">LISTO PARA REPARTIR</div></div><hr><div style="font-size:12px;color:#888">CLIENTE</div><div style="font-size:15px;font-weight:900">${order.customer_name || '—'}</div><div style="font-size:12px;color:#555">${order.address || order.delivery_address || ''}</div>${order.notes ? `<div style="background:#FEF2F2;padding:5px 8px;margin-top:6px;font-size:11px;font-weight:700;color:#B91C1C;border-radius:3px">⚠️ ${order.notes}</div>` : ''}<hr><div style="font-size:12px;color:#888">PRODUCTOS</div>${itemsHtml}<hr><div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900"><span>TOTAL</span><span style="color:#2D6A4F">€${Number(order.total || 0).toFixed(2)}</span></div><div style="text-align:center;margin-top:10px;font-size:10px;color:#aaa">Oxidian</div><script>window.onload=()=>window.print()<\/script></body></html>`)
   win.document.close()
 }
 
@@ -217,7 +217,7 @@ export default function PedidosContent({ session, onLogout }) {
     toast.success(`#${order.order_number} → ${STATUS_LABELS[next]}`)
     if (next === 'ready') {
       const riderAssignments = await runAutoAssign({ role: 'repartidor', storeId })
-      printTicket(order, settings.business_name || 'CarmoCream')
+      printTicket(order, settings.business_name || 'Oxidian')
       setOpenId(null)
       if (riderAssignments === 0) {
         toast('Pedido listo. Esperando repartidor online.', {

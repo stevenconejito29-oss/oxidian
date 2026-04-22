@@ -1,4 +1,4 @@
-// AdminStockTab.jsx — CarmoCream v2.0
+// AdminStockTab.jsx — Oxidian v2.0
 // Stock con ingredientes compartidos entre múltiples productos
 // Soft-delete con deleted_at (sin columna 'active')
 
@@ -932,4 +932,3 @@ export default function AdminStockTab({ storeId = 'default' }) {
     </div>
   )
 }
-

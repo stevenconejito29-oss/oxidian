@@ -1,5 +1,5 @@
 /**
- * useCart.js — CarmoCream
+ * useCart.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Hook que centraliza toda la lógica de estado del carrito.
  * Elimina ~120 líneas de Menu.jsx y hace el carrito testeable.

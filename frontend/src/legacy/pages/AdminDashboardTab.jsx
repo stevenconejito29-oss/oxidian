@@ -1,4 +1,4 @@
-// AdminDashboardTab.jsx — CarmoCream · Dashboard Operativo v2
+// AdminDashboardTab.jsx — Oxidian · Dashboard Operativo v2
 // Kanban Realtime · KPIs día · Productos Estrella · Control total
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
@@ -325,4 +325,3 @@ export default function AdminDashboardTab({ orders: initialOrders, onOrderUpdate
     </div>
   )
 }
-

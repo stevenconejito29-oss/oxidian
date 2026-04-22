@@ -1,4 +1,4 @@
-// AdminStaffTab.jsx — CarmoCream
+// AdminStaffTab.jsx — Oxidian
 // Auto-asignación: en cada tick del poll (12 s) se llama a runAutoAssign()
 // que asigna todos los pedidos sin staff al miembro online con menos carga.
 // Al conectarse un cocinero/repartidor, PedidosContent/RepartidorContent

@@ -6,7 +6,7 @@
 ## 2026-04-17 — Sesiones iniciales de arquitectura
 
 ### SETUP — Análisis del proyecto heredado
-**Qué**: carmocream legacy era tienda única hardcodeada. Se extrajo lógica reutilizable.
+**Qué**: el proyecto legacy era una tienda única hardcodeada. Se extrajo lógica reutilizable.
 **Resultado**: OK
 
 ### MIGRACIÓN — RESET_COMPLETE.sql

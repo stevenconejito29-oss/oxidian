@@ -1,4 +1,4 @@
-// Pedidos.jsx — CarmoCream
+// Pedidos.jsx — Oxidian
 // Sesión en localStorage con TTL 8h
 // (sessionStorage se borra en iOS Safari al volver desde otra app)
 
@@ -8,7 +8,7 @@ import PedidosContent from './PedidosContent'
 import StaffPWARequired from './StaffPWARequired'
 import { sendStaffOfflineBeacon, setStaffOnlineState, startStaffHeartbeat, stopStaffHeartbeat } from '../lib/staffPresence'
 
-const SESSION_KEY = 'carmocream_staff_cocina'
+const SESSION_KEY = 'oxidian_staff_kitchen'
 const SESSION_TTL = 8 * 60 * 60 * 1000
 
 function loadSession() {

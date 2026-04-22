@@ -11,7 +11,7 @@ function normalizePort(rawValue) {
 
 function getDesktopRuntimeConfig() {
   if (typeof window === 'undefined') return null
-  return window.carmocreamDesktopAdmin?.runtimeConfig || null
+  return window.oxidianDesktopAdmin?.runtimeConfig || null
 }
 
 function buildLoopbackUrl() {

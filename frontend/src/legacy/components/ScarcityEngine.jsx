@@ -1,5 +1,5 @@
 /**
- * ScarcityEngine.jsx — CarmoCream v3
+ * ScarcityEngine.jsx — Oxidian v3
  * ─────────────────────────────────────────────────────────────
  * Módulo de psicología de escasez conectado a datos REALES.
  * - StockBadge: usa out_of_stock de BD + "Próxima Disponibilidad"

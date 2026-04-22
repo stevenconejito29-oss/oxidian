@@ -2,9 +2,9 @@ import { OXIDIAN_ENTRY_PATH } from './oxidianAccess'
 
 const STORAGE_KEYS = {
   oxidian: 'oxidian_admin',
-  admin: 'cc_admin',
-  cocina: 'carmocream_staff_cocina',
-  repartidor: 'carmocream_staff_repartidor',
+  admin: 'oxidian_admin_panel',
+  cocina: 'oxidian_staff_kitchen',
+  repartidor: 'oxidian_staff_riders',
 }
 
 function safeParse(raw) {

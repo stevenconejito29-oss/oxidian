@@ -1,7 +1,7 @@
 -- ============================================================
 -- OXIDIAN / CARMOCREAM
 -- Canonical database schema index
--- Fecha de consolidacion: 2026-04-21
+-- Fecha de consolidacion: 2026-04-22
 -- ============================================================
 --
 -- Este archivo funciona como punto canonico de referencia del esquema
@@ -27,8 +27,10 @@
 --   - existe la jerarquia tenant -> store -> branch
 --   - existe user_memberships para control de acceso jerarquico
 --   - existen funciones para claims JWT y autorizacion por alcance
---   - stores.id es texto tipo slug, no uuid
---   - tenant_subscriptions incluye feature_overrides y notes para overrides por tenant
+--   - stores.id sigue siendo texto tipo slug en este workspace
+--   - existe public.categories como catalogo base por store y products.category_id
+--   - orders.branch_id existe y order_number ya es entero
+--   - tenant_subscriptions incluye feature_overrides, notes, plan_id starter y status
 --   - el proyecto remoto de Supabase no parece tener activadas todas las
 --     policies/grants esperadas, aunque las migraciones locales si las definen
 --
@@ -55,6 +57,7 @@
 -- store_settings
 -- store_process_profiles
 -- store_runtime_profiles
+-- categories
 -- products
 -- combos
 -- toppings
@@ -108,6 +111,7 @@
 -- user_memberships: super admin full access + tenant owner manage
 -- store_templates: lectura publica de templates activos
 -- store_plans: lectura publica de planes activos
+-- categories: lectura publica del catalogo base por store
 -- tenant_subscriptions: lectura por tenant y control total por super admin
 -- landing_requests: insercion publica + gestion por super admin
 --

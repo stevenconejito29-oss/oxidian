@@ -25,7 +25,7 @@ No configures `Root Directory = frontend`. El deploy correcto usa la raiz del re
 ## Opcion B - Deploy con Vercel CLI
 
 ```powershell
-cd C:\Users\steven\Downloads\carmocream\carmocream
+cd <repo-root>
 npm install -g vercel
 vercel login
 vercel

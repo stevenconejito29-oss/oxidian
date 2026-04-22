@@ -1,5 +1,5 @@
 /**
- * useRealtimeProducts.js — CarmoCream
+ * useRealtimeProducts.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Escucha cambios en `products` y `combos` en tiempo real.
  * Cuando el Admin cambia stock/precio/disponibilidad,

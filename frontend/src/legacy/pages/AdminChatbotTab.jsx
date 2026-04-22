@@ -1,4 +1,4 @@
-// AdminChatbotTab.jsx — CarmoCream v3.0 (Chatbot Local)
+// AdminChatbotTab.jsx — Oxidian v3.0 (Chatbot Local)
 // Sistema con servidor local, QR de WhatsApp, sin Railway
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -121,7 +121,7 @@ function buildBotFetchMessage(error, targetUrl, label = 'el bot local') {
   const rawMessage = String(error?.message || error || '').trim() || 'Error desconocido'
   const failedToFetch = /failed to fetch|networkerror|load failed/i.test(rawMessage)
   const loopback = isLoopbackBotUrl(targetUrl)
-  const isDesktop = typeof window !== 'undefined' && window.carmocreamDesktopAdmin?.allowed === true
+  const isDesktop = typeof window !== 'undefined' && window.oxidianDesktopAdmin?.allowed === true
 
   if (failedToFetch && loopback) {
     if (isDesktop) {

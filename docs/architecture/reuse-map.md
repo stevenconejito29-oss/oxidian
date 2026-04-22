@@ -2,7 +2,7 @@
 
 Proyecto origen:
 
-- `C:\Users\steven\Downloads\carmocream\carmocream`
+- repo actual de Oxidian
 
 ## Frontend a reutilizar
 

@@ -124,7 +124,7 @@ export default function LoyaltyWidget({ phone, open: controlledOpen, onClose: on
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <p style={{ fontSize: '0.56rem', fontWeight: 900, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.65)', margin: '0 0 5px', textTransform: 'uppercase' }}>
-                    Club CarmoCream
+                    Club Oxidian
                   </p>
                   <h2 style={{ fontFamily: "'Pacifico', cursive", fontSize: '1.4rem', color: 'white', margin: '0 0 4px', lineHeight: 1.1 }}>
                     {level.emoji} {level.label}

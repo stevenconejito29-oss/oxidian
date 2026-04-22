@@ -318,7 +318,7 @@ export default function Admin() {
   const [auth, setAuth] = useState(() => {
     const session = loadStoredSession(STORAGE_KEYS.admin)
     if (session?.role === 'admin' || session?.role === 'owner') return session
-    const legacy = sessionStorage.getItem('cc_admin')
+    const legacy = sessionStorage.getItem(STORAGE_KEYS.admin)
     if (legacy === '1') return OWNER_SESSION
     return false
   })
@@ -556,7 +556,7 @@ export default function Admin() {
 
   function secureLogout() {
     clearStoredSession(STORAGE_KEYS.admin)
-    sessionStorage.removeItem('cc_admin')
+              sessionStorage.removeItem(STORAGE_KEYS.admin)
     setAuth(false)
     setPassword('')
     setUsername('')
@@ -587,7 +587,7 @@ export default function Admin() {
           storedHash = gd?.value || ''
         }
         if (storedHash && storedHash === hashHex) {
-          sessionStorage.setItem('cc_admin', JSON.stringify(OWNER_SESSION))
+              sessionStorage.setItem(STORAGE_KEYS.admin, JSON.stringify(OWNER_SESSION))
           setLoginAttempts(0)
           setAuth(OWNER_SESSION)
         } else {
@@ -617,7 +617,7 @@ export default function Admin() {
         if (Array.isArray(data.permissions)) perms = data.permissions
         else try { perms = JSON.parse(data.permissions||'[]') } catch {}
         const session = { id:data.id, name:data.name, username:data.username, role:'admin', avatar:data.avatar_emoji, permissions:perms }
-        sessionStorage.setItem('cc_admin', JSON.stringify(session))
+              sessionStorage.setItem(STORAGE_KEYS.admin, JSON.stringify(session))
         setLoginAttempts(0)
         setAuth(session)
       }
@@ -626,7 +626,7 @@ export default function Admin() {
   }
 
   function logout() {
-    sessionStorage.removeItem('cc_admin')
+              sessionStorage.removeItem(STORAGE_KEYS.admin)
     setAuth(false); setPassword(''); setUsername('')
   }
 

@@ -4,8 +4,8 @@ import { supabase } from './supabase'
 
 export const DEFAULT_STORE_ID = 'default'
 export const DEFAULT_NICHE = 'food'
-const ACTIVE_ADMIN_STORE_KEY = 'cc_active_store_id'
-const DOMAIN_STORE_CONTEXT_KEY = 'cc_domain_store_context'
+const ACTIVE_ADMIN_STORE_KEY = 'oxidian_active_store_id'
+const DOMAIN_STORE_CONTEXT_KEY = 'oxidian_domain_store_context'
 let domainStoreContextPromise = null
 
 export function normalizeStoreId(value) {
@@ -74,7 +74,7 @@ function writeCachedDomainStoreContext(context) {
 
 export function getDesktopBoundStoreId() {
   if (typeof window === 'undefined') return null
-  return normalizeStoreId(window.carmocreamDesktopAdmin?.runtimeConfig?.storeId || '')
+  return normalizeStoreId(window.oxidianDesktopAdmin?.runtimeConfig?.storeId || '')
 }
 
 export function getStoredActiveStoreId() {

@@ -1,4 +1,4 @@
-// AdminFinanceTab.jsx — CarmoCream
+// AdminFinanceTab.jsx — Oxidian
 // Sistema Semáforo Financiero v2: costes inline, ranking productos, alertas, PC-optimized
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'

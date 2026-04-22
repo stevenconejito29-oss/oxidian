@@ -1,5 +1,5 @@
 /**
- * useStoreStatus.js — CarmoCream
+ * useStoreStatus.js — Oxidian
  * ─────────────────────────────────────────────────────────────
  * Determina si la tienda está abierta basándose en settings
  * de Supabase. Centraliza la lógica de horario que antes

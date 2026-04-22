@@ -1,4 +1,4 @@
-// RepartidorContent.jsx — CarmoCream Repartidor v5 — Móvil vertical
+// RepartidorContent.jsx — Oxidian Repartidor v5 — Móvil vertical
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import styles from './Repartidor.module.css'
 import { supabase } from '../lib/supabase'
@@ -41,7 +41,7 @@ function buildDeliveredPatch(order, extra = {}) {
 }
 function mapsUrl(addr) {
   if (!addr) return null
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr + ', Carmona, Sevilla')}&travelmode=driving`
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving`
 }
 function waUrl(order, businessName) {
   if (!order?.customer_phone) return null

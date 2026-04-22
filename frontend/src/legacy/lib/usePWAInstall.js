@@ -115,7 +115,7 @@ export function usePWAInstall({ enabled = true } = {}) {
     getBarText: () => (
       isWebView
         ? (onIOS ? 'Abrir en Safari para instalar' : 'Abrir en Chrome para instalar')
-        : 'Guarda CarmoCream en tu movil'
+        : 'Guarda Oxidian en tu movil'
     ),
   }
 }

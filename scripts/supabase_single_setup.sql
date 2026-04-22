@@ -108,7 +108,7 @@ create table public.store_templates (
 
 -- 3.3 Stores (marcas/tiendas)
 create table public.stores (
-  id                  text primary key,          -- slug-style, ej: "carmocream"
+  id                  text primary key,          -- slug-style, ej: "oxidian-store"
   slug                text,
   code                text,
   name                text not null,
