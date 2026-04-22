@@ -7,7 +7,7 @@ import { useAuth } from '../providers/AuthProvider'
  * roles: lista de roles permitidos. Si vacío, solo requiere autenticación.
  */
 export function ProtectedRoute({ children, roles = [] }) {
-  const { isAuthenticated, role, loading } = useAuth()
+  const { isAuthenticated, isPendingApproval, role, loading } = useAuth()
   const location = useLocation()
 
   if (loading) {
@@ -21,6 +21,10 @@ export function ProtectedRoute({ children, roles = [] }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  if (role === 'anonymous') {
+    return <Navigate to={isPendingApproval ? '/' : '/'} replace />
   }
 
   if (roles.length > 0 && !roles.includes(role)) {

@@ -9,6 +9,41 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-22 - endurecimiento del arranque auth y estado pendiente de aprobacion
+
+### Causa raiz
+
+- La home `/` ya estaba modelada como landing publica, pero el arranque de autenticacion seguia teniendo dos huecos reales:
+  - `AuthProvider` no capturaba fallos de `supabaseAuth.auth.getSession()`, lo que podia dejar la app en `loading` si habia una sesion corrupta o un estado de auth inconsistente en el navegador.
+  - El owner creado desde la landing puede autenticarse antes de que el super admin le asigne membresia; en ese caso la app quedaba en un estado poco claro de sesion en lugar de mostrar que la cuenta sigue pendiente.
+- El fondo verde que reporta el usuario viene del bootstrap de [frontend/index.html](/abs/path/C:/Users/steven/Downloads/carmocream/carmocream/frontend/index.html) y hacia mas visible ese limbo de arranque.
+
+### Implementado
+
+- `frontend/src/core/providers/authState.js`
+  - Nuevo helper canonico para:
+    - reconstruir sesiones guardadas
+    - reconstruir membresias guardadas
+    - detectar `pending_approval` desde metadata de Supabase
+- `frontend/src/core/providers/AuthProvider.jsx`
+  - Ahora reutiliza el helper nuevo.
+  - Se endurece `init()` con `try/catch` para no dejar la app colgada si `getSession()` falla.
+  - El flujo legacy solo acepta como sesion completa la que trae `session_membership`; si no, intenta cargar membresia real o limpia el estado.
+  - `signOut()` y el branch sin sesion de `onAuthStateChange()` dejan `loading=false` explicitamente.
+- `frontend/src/core/router/AppRouter.jsx`
+  - Nueva pantalla de `Verificando acceso` para que el boot no se vea como fondo verde vacio.
+  - Nueva pantalla `Cuenta pendiente de aprobacion` para usuarios autenticados con `pending_approval` pero sin membresia activa.
+
+### Validacion prevista
+
+- `node --test --test-isolation=none tests/authSessionContract.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este corte no publica todavia el endpoint nuevo de staff login; ese trabajo sigue estando fuera de `main`.
+- El objetivo de esta iteracion es estabilizar la home y el flujo owner-pending del deploy actual.
+
 ## Iteracion 2026-04-22 - spec de arquitectura multi-store y branch-first
 
 ### Implementado
@@ -777,3 +812,78 @@
 - busqueda global sin coincidencias para `CarmoCream`, `carmocream`, `cc_stamps_`, `cc_vid_`, `cc_loyalty_local_`, `cc_push_endpoint`, `cc_affiliate_code_`
 - `backend/.venv/Scripts/python.exe -m unittest test_oxidian_branding_and_runtime_contract.py`
 - `npm run build` en `frontend`
+
+## Iteracion 2026-04-22 - hardening de home y autenticacion
+
+### Causa raiz
+
+- La landing publica del dueno en `/` si existe y su endpoint `POST /api/backend/public/landing-request` esta operativo en `main`.
+- El bloqueo visual de home no venia de la landing sino de dos riesgos acumulados:
+  - sesiones legacy guardadas podian rehidratarse aunque ya no tuvieran membresia valida
+  - service workers antiguos bajo `service-worker.js` podian seguir sirviendo shell cacheada (`oxidian-v1`) aunque el app nuevo ya no los registra
+- Ademas, las cuentas creadas desde la landing con `pending_approval` necesitaban una resolucion UX clara cuando aun no existe membresia.
+
+### Implementado
+
+- `frontend/src/core/providers/AuthProvider.jsx`
+  - `loadMembership()` ahora devuelve resultado estructurado
+  - una sesion almacenada solo se conserva si resuelve membresia valida o si el usuario realmente esta marcado como `pending_approval`
+  - sesiones legacy invalidadas se limpian en vez de dejar la home en estado autenticado roto
+- `frontend/src/core/router/AppRouter.jsx`
+  - se confirma el uso de la pantalla dedicada para cuentas pendientes de aprobacion en la entrada `/`
+- `frontend/src/main.jsx`
+  - limpieza al arranque del service worker legacy `service-worker.js`
+  - borrado del cache `oxidian-v1` para evitar shell vieja en la app nueva
+
+### Decision de arquitectura
+
+- La home publica del SaaS permanece en `/` como punto de solicitud del dueno.
+- El sistema nuevo no debe depender de service workers heredados del runtime legacy.
+- Un usuario autenticado sin membresia solo debe persistir si esta en estado legitimo de aprobacion pendiente; cualquier sesion vieja o inconsistente debe purgarse.
+
+### Verificacion prevista
+
+- `npm run build` en `frontend`
+
+## Iteracion 2026-04-22 - auth root fix en main
+
+### Causa raiz
+
+- El fondo verde venia del bootstrap visual por defecto, pero el bloqueo real estaba en la clasificacion de sesion.
+- `frontend/src/core/providers/AuthProvider.jsx` aceptaba cualquier sesion almacenada con `supabase_access_token` aunque no tuviera `session_membership` ni `user.id`.
+- Eso podia dejar la home en un estado "autenticado" invalido y mandar al usuario a pantallas de auth rotas en vez de mostrar la landing o un estado claro.
+- Para duenos creados desde la landing con `pending_approval`, la home tampoco tenia una resolucion explicita y caia en un error de sesion generico.
+
+### Implementado
+
+- Nuevo helper puro de auth:
+  - `frontend/src/core/providers/authState.js`
+  - centraliza `buildSessionFromStored`, `buildMembershipFromStored` e `isPendingApprovalUser`
+- `frontend/src/core/providers/AuthProvider.jsx`
+  - ahora solo rehidrata sesiones legacy si traen `session_membership` valida o un `user.id` reutilizable
+  - limpia sesiones legacy inconsistentes en vez de tratarlas como login valido
+  - expone `isPendingApproval` al arbol de auth
+- `frontend/src/core/router/AppRouter.jsx`
+  - home con pantalla de verificacion mas clara
+  - pantalla explicita para cuentas pendientes de aprobacion del dueno
+  - mantiene `SessionErrorScreen` solo para errores reales de membresia
+- `frontend/src/core/guards/ProtectedRoute.jsx`
+  - cualquier usuario autenticado sin rol util vuelve a `/` para que la home resuelva el estado correcto
+- Prueba nueva:
+  - `frontend/tests/authSessionContract.test.mjs`
+
+### Decision de arquitectura
+
+- La home publica del SaaS sigue en `/`.
+- Una sesion almacenada no se considera autentica por tener solo un token; debe traer contexto de membresia o un usuario nativo que permita rehidratarlo correctamente.
+- El estado `pending_approval` del dueno es un caso de negocio legitimo y debe tener UX dedicada, no un error tecnico.
+
+### Verificacion
+
+- `node --test --test-isolation=none frontend/tests/authSessionContract.test.mjs`
+- `node --test --test-isolation=none frontend/tests/backendBase.test.mjs frontend/tests/pipelineAdmission.test.mjs frontend/tests/storeCatalog.test.mjs frontend/tests/superAdminPipeline.test.mjs`
+- `vite build` en `frontend`
+
+### Pendiente inmediato
+
+- Publicar estos cambios en la rama que alimenta Vercel para verificar el comportamiento real en `https://carmocream-virid.vercel.app/`.

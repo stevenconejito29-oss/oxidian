@@ -6,15 +6,16 @@ import {
   persistStoredSession,
   STORAGE_KEYS,
 } from '../../legacy/lib/appSession'
+import {
+  buildMembershipFromStored,
+  buildSessionFromStored,
+  isPendingApprovalUser,
+} from './authState'
 
 export const AuthContext = React.createContext(null)
 export function useAuth() { return React.useContext(AuthContext) }
 
 // ─── helpers legacy (staff PIN) ──────────────────────────────────
-function buildSessionFromStored(stored) {
-  if (!stored?.supabase_access_token) return null
-  return { access_token: stored.supabase_access_token, user: stored.user || null, _source: 'appSession' }
-}
 function readActiveStoredSession() {
   for (const key of Object.values(STORAGE_KEYS)) {
     const stored = loadStoredSession(key)
@@ -56,7 +57,7 @@ export function AuthProvider({ children }) {
     if (!userId) {
       setMembership(null)
       setAuthError(null)
-      return
+      return { membership: null, authError: null }
     }
     try {
       const { data, error } = await supabaseAuth
@@ -74,7 +75,7 @@ export function AuthProvider({ children }) {
         }
         setMembership(null)
         setAuthError('membership_load_failed:' + errMsg)
-        return
+        return { membership: null, authError: 'membership_load_failed:' + errMsg }
       }
 
       if (!data || data.length === 0) {
@@ -85,7 +86,7 @@ export function AuthProvider({ children }) {
         }
         setMembership(null)
         setAuthError('membership_not_found')
-        return
+        return { membership: null, authError: 'membership_not_found' }
       }
 
       // Ordenar por jerarquía y quedarse con la de mayor rango
@@ -98,6 +99,7 @@ export function AuthProvider({ children }) {
       console.log('[AuthProvider] rol resuelto:', sorted[0].role)
       setMembership(sorted[0])
       setAuthError(null)
+      return { membership: sorted[0], authError: null }
     } catch (e) {
       console.warn('[AuthProvider] loadMembership exception:', e)
       if (retryCount < MAX_MEMBERSHIP_RETRIES) {
@@ -106,6 +108,7 @@ export function AuthProvider({ children }) {
       }
       setMembership(null)
       setAuthError('membership_exception')
+      return { membership: null, authError: 'membership_exception' }
     }
   }
 
@@ -132,20 +135,56 @@ export function AuthProvider({ children }) {
     }
 
     // ── Aplica una sesión legacy de staff (PIN login) ─────────────
-    function applyLegacySession() {
+    async function applyLegacySession() {
       const active = readActiveStoredSession()
       const s = active ? buildSessionFromStored(active.stored) : null
-      if (mounted) { setSession(s); setLoading(false) }
+      if (!mounted) return
+      if (!s) {
+        setSession(null)
+        setMembership(null)
+        setAuthError(null)
+        setLoading(false)
+        return
+      }
+
+      const storedMembership = buildMembershipFromStored(active?.stored)
+      if (storedMembership) {
+        setSession(s)
+        setMembership(storedMembership)
+        setAuthError(null)
+        setLoading(false)
+        return
+      }
+
+      if (s.user?.id) {
+        const result = await loadMembership(s.user.id)
+        if (mounted && (result?.membership || isPendingApprovalUser(s.user))) {
+          setSession(s)
+          setLoading(false)
+          return
+        }
+      }
+
+      if (active?.key) clearStoredSession(active.key)
+      setSession(null)
+      setMembership(null)
+      setAuthError(null)
+      setLoading(false)
     }
 
     async function init() {
-      const { data: { session: s } } = await supabaseAuth.auth.getSession()
-      if (!mounted) return
-      if (s?.user?.id) {
-        await applyNativeSession(s)
-        return
+      try {
+        const { data: { session: s } } = await supabaseAuth.auth.getSession()
+        if (!mounted) return
+        if (s?.user?.id) {
+          await applyNativeSession(s)
+          return
+        }
+        await applyLegacySession()
+      } catch (error) {
+        console.warn('[AuthProvider] init session failed:', error)
+        await applyLegacySession()
       }
-      applyLegacySession()
     }
 
     init()
@@ -155,7 +194,7 @@ export function AuthProvider({ children }) {
       if (!s) {
         const current = loadStoredSession(STORAGE_KEYS.admin)
         if (current?._source === 'supabaseAuth') clearStoredSession(STORAGE_KEYS.admin)
-        if (mounted) { setSession(null); setMembership(null); setAuthError(null) }
+        if (mounted) { setSession(null); setMembership(null); setAuthError(null); setLoading(false) }
         return
       }
       // Usamos setTimeout(0) para evitar el warning de React sobre updates durante render
@@ -184,6 +223,7 @@ export function AuthProvider({ children }) {
     setSession(null)
     setMembership(null)
     setAuthError(null)
+    setLoading(false)
   }
 
   // Permite forzar una recarga de la membresía desde cualquier componente
@@ -202,6 +242,7 @@ export function AuthProvider({ children }) {
     loading,
     authError,
     isAuthenticated: Boolean(session),
+    isPendingApproval: isPendingApprovalUser(session?.user),
     role:            membership?.role      || 'anonymous',
     tenantId:        membership?.tenant_id  || null,
     storeId:         membership?.store_id   || null,
