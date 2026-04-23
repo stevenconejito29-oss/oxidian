@@ -10,6 +10,34 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-23 - correccion del white screen en landing con sesion previa
+
+### Causa raiz
+
+- La URL publicada cargaba `index.html` y el bundle, pero algunos navegadores seguian mostrando pantalla en blanco.
+- El hallazgo mas fuerte en codigo fue `frontend/src/modules/admin/pages/LandingPage.jsx`:
+  - hacia `return <Navigate ... />` para usuarios autenticados antes de declarar sus `useState`
+  - eso rompe las reglas de hooks cuando el usuario llega con una sesion ya cargada y React intenta reconciliar el componente en un render posterior
+  - el sintoma esperado es crash de runtime y pantalla vacia
+
+### Implementado
+
+- `frontend/src/modules/admin/pages/LandingPage.jsx`
+  - los hooks locales ahora se inicializan antes del redirect condicional
+  - se elimina el riesgo de `Rendered fewer hooks than expected` al entrar con sesion activa
+- `frontend/tests/landingAuthContract.test.mjs`
+  - nueva prueba de contrato para evitar que el redirect vuelva a colocarse por encima de los hooks locales
+
+### Validacion prevista
+
+- `node --test --test-isolation=none frontend/tests/landingAuthContract.test.mjs frontend/tests/authSessionContract.test.mjs frontend/tests/oxidianDsContract.test.mjs frontend/tests/publicBranchFlowContract.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este fix no se reflejara en Vercel hasta redeploy.
+- Si el navegador del usuario mantiene una sesion vieja, el bug se reproduce con mucha mas facilidad en `/`.
+
 ## Iteracion 2026-04-23 - rutas publicas criticas integradas en main para produccion
 
 ### Causa raiz

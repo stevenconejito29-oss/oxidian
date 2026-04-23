@@ -39,10 +39,6 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated, role, loading } = useAuth()
 
-  if (!loading && isAuthenticated && role !== 'anonymous') {
-    return <Navigate to={ROLE_HOME[role] || '/tenant/admin'} replace />
-  }
-
   const [form, setForm] = React.useState({
     full_name: '',
     email: '',
@@ -57,6 +53,10 @@ export default function LandingPage() {
   const [sending, setSending] = React.useState(false)
   const [sent, setSent] = React.useState(false)
   const [error, setError] = React.useState('')
+
+  if (!loading && isAuthenticated && role !== 'anonymous') {
+    return <Navigate to={ROLE_HOME[role] || '/tenant/admin'} replace />
+  }
 
   const patch = (key, value) => setForm((current) => ({ ...current, [key]: value }))
 
