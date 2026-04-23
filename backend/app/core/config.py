@@ -20,5 +20,8 @@ def load_config():
         "SUPABASE_SERVICE_ROLE_KEY": os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip(),
         "SUPABASE_JWT_SECRET": os.getenv("SUPABASE_JWT_SECRET", "").strip(),
         "FRONTEND_ORIGIN": os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").strip(),
+        # IDs de Supabase Auth de los super admins (separados por coma).
+        # Úsalo como fallback si el super admin no tiene fila en user_memberships.
+        "SUPER_ADMIN_USER_IDS": os.getenv("SUPER_ADMIN_USER_IDS", "").strip(),
     }
 

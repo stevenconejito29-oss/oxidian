@@ -95,8 +95,17 @@ export async function listStores(tenantId = null) {
 }
 
 export async function createStore(payload) {
+  // Ruta del tenant: el dueño crea su propia tienda
   const data = await _backendFetch('POST', '/tenant/stores', payload)
   return data?.store || data
+}
+
+// Ruta exclusiva del super admin: crea una tienda para cualquier tenant
+export async function createStoreAdmin(payload) {
+  if (!payload?.id || !payload?.name || !payload?.tenant_id) {
+    throw new Error('id, name y tenant_id son requeridos')
+  }
+  return _backendFetch('POST', '/admin/stores', payload)
 }
 
 export async function updateStore(storeId, patch) {

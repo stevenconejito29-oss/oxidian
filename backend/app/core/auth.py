@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -116,13 +117,26 @@ def build_auth_context() -> AuthContext:
     user_id = str(claims.get("sub") or debug_user_id or "").strip() or None
     membership = _resolve_membership_context(user_id)
 
+    # ── Fallback por SUPER_ADMIN_USER_IDS ────────────────────────────────────
+    # Si el super admin aún no tiene fila en user_memberships, su rol se puede
+    # definir en la variable de entorno SUPER_ADMIN_USER_IDS (separados por coma).
+    super_admin_ids_raw = current_app.config.get("SUPER_ADMIN_USER_IDS", "") or ""
+    super_admin_ids = {sid.strip() for sid in super_admin_ids_raw.split(",") if sid.strip()}
+    is_configured_super_admin = bool(user_id and user_id in super_admin_ids)
+
     app_role = str(
         claims.get("app_role")
         or claims.get("user_role")
         or membership.get("app_role")
         or debug_role
+        or ("super_admin" if is_configured_super_admin else "")
         or ("super_admin" if allow_local and request.headers.get("X-Debug-Super-Admin") == "1" else "anonymous")
     ).strip()
+
+    # Si el user es un super admin configurado, asegurarse de que el rol sea correcto
+    # aunque las claims digan otra cosa (excepto si viene un rol ya válido del DB)
+    if is_configured_super_admin and app_role not in {"super_admin"}:
+        app_role = "super_admin"
 
     return AuthContext(
         user_id=user_id,
