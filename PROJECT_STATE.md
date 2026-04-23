@@ -10,6 +10,32 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-23 - endurecimiento del bootstrap contra cache PWA legacy
+
+### Causa raiz probable
+
+- El deploy publicado ya respondia con HTML nuevo y `health` correcto, pero el usuario seguia viendo pantalla blanca.
+- Dado el historial del proyecto con `service-worker.js` y cache `oxidian-v1`, una causa probable restante es que el navegador siga arrancando con assets stale interceptados por un service worker legacy antes de que React pueda hidratar.
+
+### Implementado
+
+- `frontend/index.html`
+  - nuevo script inline previo al bootstrap del bundle
+  - desregistra service workers legacy (`/service-worker.js`, `/sw.js`, `workbox`)
+  - elimina caches `oxidian-v1` y entradas `workbox`
+- `frontend/tests/bootstrapCacheContract.test.mjs`
+  - prueba de contrato para asegurar que el cleanup previo al arranque siga presente
+
+### Validacion prevista
+
+- `node --test --test-isolation=none frontend/tests/bootstrapCacheContract.test.mjs frontend/tests/landingAuthContract.test.mjs frontend/tests/authSessionContract.test.mjs frontend/tests/oxidianDsContract.test.mjs frontend/tests/publicBranchFlowContract.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este cambio apunta al vector mas probable cuando `index.html` carga pero la SPA queda blanca tras varios redeploys.
+- Tras publicar este corte, conviene probar en navegador normal y en incognito para confirmar que el runtime ya no depende de caches viejos.
+
 ## Iteracion 2026-04-23 - correccion del white screen en landing con sesion previa
 
 ### Causa raiz

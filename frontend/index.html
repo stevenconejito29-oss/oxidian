@@ -41,6 +41,44 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) return
+
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.getRegistrations()
+            .then(function (registrations) {
+              return Promise.all(
+                registrations
+                  .filter(function (registration) {
+                    var worker = registration.active || registration.waiting || registration.installing
+                    var scriptUrl = (worker && worker.scriptURL) || ''
+                    return (
+                      scriptUrl.indexOf('/service-worker.js') !== -1
+                      || scriptUrl.indexOf('/sw.js') !== -1
+                      || scriptUrl.indexOf('workbox') !== -1
+                    )
+                  })
+                  .map(function (registration) { return registration.unregister() })
+              )
+            })
+            .catch(function () {})
+
+          if (!('caches' in window)) return
+          window.caches.keys()
+            .then(function (keys) {
+              return Promise.all(
+                keys
+                  .filter(function (key) {
+                    return key === 'oxidian-v1' || key.indexOf('workbox') !== -1
+                  })
+                  .map(function (key) { return window.caches.delete(key) })
+              )
+            })
+            .catch(function () {})
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
