@@ -31,8 +31,9 @@ function storageForKey(key) {
 
 function resolveRouteKey(pathname = '') {
   if (pathname === OXIDIAN_ENTRY_PATH || /^\/oxidian(?:\/|$)/.test(pathname)) return STORAGE_KEYS.oxidian
-  if (/\/pedidos(?:\/|$)/.test(pathname)) return STORAGE_KEYS.cocina
-  if (/\/repartidor(?:\/|$)/.test(pathname)) return STORAGE_KEYS.repartidor
+  if (/\/pedidos(?:\/|$)/.test(pathname) || /\/branch\/kitchen(?:\/|$)/.test(pathname)) return STORAGE_KEYS.cocina
+  if (/\/repartidor(?:\/|$)/.test(pathname) || /\/branch\/riders(?:\/|$)/.test(pathname)) return STORAGE_KEYS.repartidor
+  if (/\/branch\/admin(?:\/|$)/.test(pathname)) return STORAGE_KEYS.admin
   if (/\/admin(?:\/|$)/.test(pathname)) return STORAGE_KEYS.admin
   return STORAGE_KEYS.admin
 }

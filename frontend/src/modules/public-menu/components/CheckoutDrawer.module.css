@@ -34,6 +34,15 @@
   color: #64748b;
 }
 
+.metaRow {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
 .title {
   margin: 6px 0 0;
   font-size: 1.35rem;
@@ -66,8 +75,48 @@
 .cartLine {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   font-size: 0.92rem;
+}
+
+.cartLineInfo {
+  display: grid;
+  gap: 4px;
+}
+
+.cartLineInfo small {
+  color: #64748b;
+}
+
+.cartLineActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qtyButton,
+.removeButton {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.qtyButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  font-weight: 800;
+}
+
+.removeButton {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(153, 27, 27, 0.08);
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .summaryRowTotal {

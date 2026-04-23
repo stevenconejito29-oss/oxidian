@@ -3,7 +3,7 @@
  * Acepta slug o id (compatibilidad legacy).
  */
 import React from 'react'
-import { supabaseAuth } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../shared/supabase/client'
 
 export function useStorePublicConfig(storeSlugOrId, branchSlugOrId = null) {
   const [store,    setStore]    = React.useState(null)

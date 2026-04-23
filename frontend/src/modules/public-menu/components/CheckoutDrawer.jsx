@@ -1,12 +1,11 @@
 import React from 'react'
-import { supabase } from '../../../legacy/lib/supabase'
-import { buildOrderItem } from '../../../legacy/lib/orderUtils'
+import { buildBackendUrl } from '../../../shared/lib/backendBase'
 import styles from './CheckoutDrawer.module.css'
 
 const STORAGE_KEY = 'oxidian_public_checkout_customer'
 
-function money(value) {
-  return `${Number(value || 0).toFixed(2)} EUR`
+function money(value, currency = 'EUR') {
+  return `${Number(value || 0).toFixed(2)} ${currency}`
 }
 
 function loadSavedCustomer() {
@@ -22,11 +21,16 @@ export default function CheckoutDrawer({
   isOpen,
   onClose,
   storeId,
+  branch,
+  store,
   cart,
   cartTotal,
   deliveryFee = 0,
   minOrder = 0,
+  currency = 'EUR',
   onClearCart,
+  onUpdateQty,
+  onRemoveItem,
 }) {
   const savedCustomer = React.useMemo(() => loadSavedCustomer(), [])
   const [form, setForm] = React.useState({
@@ -52,10 +56,11 @@ export default function CheckoutDrawer({
 
   async function handleSubmit(event) {
     event.preventDefault()
+    if (!branch?.id) return setError('Esta sede no está disponible para recibir pedidos.')
     if (!form.name.trim()) return setError('El nombre es obligatorio.')
     if (!form.phone.trim()) return setError('El teléfono es obligatorio.')
     if (!form.address.trim()) return setError('La dirección es obligatoria.')
-    if (belowMin) return setError(`Faltan ${money(remaining)} para alcanzar el pedido mínimo.`)
+    if (belowMin) return setError(`Faltan ${money(remaining, currency)} para alcanzar el pedido mínimo.`)
 
     setSaving(true)
     setError('')
@@ -63,35 +68,38 @@ export default function CheckoutDrawer({
     try {
       const saved = { name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
+      const response = await fetch(buildBackendUrl('/public/orders'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          branch_id: branch.id,
+          customer_name: saved.name,
+          customer_phone: saved.phone,
+          delivery_address: saved.address,
+          notes: form.notes.trim() || null,
+          delivery_fee: Number(deliveryFee || 0),
+          items: cart.map(item => ({
+            id: item.id || null,
+            product_name: item.product_name || item.name || '',
+            qty: Math.max(1, Number(item.qty || 1)),
+            price: Number(item.price || 0),
+            image_url: item.image_url || null,
+            emoji: item.emoji || '',
+            variants: item.variants || [],
+            modifiers: item.modifiers || [],
+            notes: item.notes || null,
+          })),
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || payload?.message || 'No se pudo crear el pedido.')
 
-      const { data: lastOrder } = await supabase
-        .from('orders')
-        .select('order_number')
-        .eq('store_id', storeId)
-        .order('order_number', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      const nextOrderNumber = Number(lastOrder?.order_number || 0) + 1
-
-      const payload = {
-        store_id: storeId,
-        order_number: nextOrderNumber,
-        customer_name: saved.name,
-        customer_phone: saved.phone,
-        delivery_address: saved.address,
-        notes: form.notes.trim() || null,
-        items: cart.map(buildOrderItem),
-        subtotal: cartTotal,
-        delivery_fee: Number(deliveryFee || 0),
-        total,
-        status: 'pending',
-      }
-
-      const { error: insertError } = await supabase.from('orders').insert(payload)
-      if (insertError) throw insertError
-
-      setSuccess({ orderNumber: nextOrderNumber, total })
+      const order = payload?.data || payload
+      setSuccess({
+        orderNumber: order?.order_number,
+        total: order?.total ?? total,
+      })
       onClearCart?.()
     } catch (nextError) {
       setError(nextError?.message || 'No se pudo crear el pedido.')
@@ -109,6 +117,10 @@ export default function CheckoutDrawer({
           <div>
             <div className={styles.kicker}>Checkout rápido</div>
             <h2 className={styles.title}>Confirma el pedido sin salir del storefront</h2>
+            <div className={styles.metaRow}>
+              <span>{store?.name || 'Tienda'}</span>
+              <span>{branch?.name || 'Sede'}</span>
+            </div>
           </div>
           <button type="button" className={styles.closeButton} onClick={onClose}>Cerrar</button>
         </div>
@@ -116,23 +128,31 @@ export default function CheckoutDrawer({
         {success ? (
           <div className={styles.successCard}>
             <strong>Pedido #{success.orderNumber} creado</strong>
-            <span>Total confirmado: {money(success.total)}</span>
+            <span>Total confirmado: {money(success.total, currency)}</span>
             <button type="button" className={styles.primaryButton} onClick={onClose}>Seguir navegando</button>
           </div>
         ) : (
           <>
             <div className={styles.summary}>
-              <div className={styles.summaryRow}><span>Subtotal</span><strong>{money(cartTotal)}</strong></div>
-              <div className={styles.summaryRow}><span>Envío</span><strong>{money(deliveryFee)}</strong></div>
-              <div className={styles.summaryRowTotal}><span>Total</span><strong>{money(total)}</strong></div>
-              {belowMin ? <div className={styles.warning}>Pedido mínimo pendiente: faltan {money(remaining)}</div> : null}
+              <div className={styles.summaryRow}><span>Subtotal</span><strong>{money(cartTotal, currency)}</strong></div>
+              <div className={styles.summaryRow}><span>Envío</span><strong>{money(deliveryFee, currency)}</strong></div>
+              <div className={styles.summaryRowTotal}><span>Total</span><strong>{money(total, currency)}</strong></div>
+              {belowMin ? <div className={styles.warning}>Pedido mínimo pendiente: faltan {money(remaining, currency)}</div> : null}
             </div>
 
             <div className={styles.cartPreview}>
               {cart.map((item, index) => (
                 <div className={styles.cartLine} key={`${item.id}-${index}`}>
-                  <span>{item.qty} × {item.product_name || item.name}</span>
-                  <strong>{money(item.price * item.qty)}</strong>
+                  <div className={styles.cartLineInfo}>
+                    <span>{item.product_name || item.name}</span>
+                    <small>{money(item.price, currency)} c/u</small>
+                  </div>
+                  <div className={styles.cartLineActions}>
+                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.id, item.qty - 1)}>-</button>
+                    <strong>{item.qty}</strong>
+                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.id, item.qty + 1)}>+</button>
+                    <button type="button" className={styles.removeButton} onClick={() => onRemoveItem?.(item.id)}>Quitar</button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -12,8 +12,10 @@ el frontend → Supabase JS con RLS.
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import os
+import secrets
 import zipfile
 from datetime import datetime, timezone
 
@@ -150,6 +152,167 @@ def _normalize_auth_user_metadata(user):
         raw = getattr(user, "user_metadata", None) or getattr(user, "app_metadata", None) or {}
     return dict(raw or {})
 
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _pin_matches(raw_pin: str, stored_pin: str | None) -> bool:
+    candidate = str(raw_pin or "").strip()
+    persisted = str(stored_pin or "").strip()
+    if not candidate or not persisted:
+        return False
+    digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    return persisted in (candidate, digest)
+
+
+def _build_supabase_access_token(
+    *,
+    user_id: str,
+    app_role: str,
+    tenant_id: str | None = None,
+    store_id: str | None = None,
+    branch_id: str | None = None,
+    email: str | None = None,
+) -> str:
+    if not SUPABASE_JWT_SECRET:
+        raise RuntimeError("SUPABASE_JWT_SECRET no configurado")
+    now = int(datetime.now(timezone.utc).timestamp())
+    payload = {
+        "aud": "authenticated",
+        "iss": "oxidian-platform",
+        "iat": now,
+        "exp": now + 8 * 60 * 60,
+        "sub": user_id,
+        "role": "authenticated",
+        "app_role": app_role,
+        "user_role": app_role,
+    }
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
+    if store_id:
+        payload["store_id"] = store_id
+    if branch_id:
+        payload["branch_id"] = branch_id
+    if email:
+        payload["email"] = email
+    token = jwt.encode(payload, SUPABASE_JWT_SECRET, algorithm="HS256")
+    return token if isinstance(token, str) else token.decode("utf-8")
+
+
+def _staff_identity_candidates(identifier: str) -> set[str]:
+    base = str(identifier or "").strip().lower()
+    if not base:
+        return set()
+    compact = " ".join(base.split())
+    no_space = compact.replace(" ", "")
+    return {value for value in {base, compact, no_space} if value}
+
+
+def _staff_matches_identifier(staff_row: dict, identifier: str) -> bool:
+    candidates = _staff_identity_candidates(identifier)
+    if not candidates:
+        return False
+    metadata = staff_row.get("metadata") or {}
+    values = {
+        str(staff_row.get("name") or "").strip().lower(),
+        str(metadata.get("username") or "").strip().lower(),
+        str(staff_row.get("email") or "").strip().lower(),
+    }
+    email_value = str(staff_row.get("email") or "").strip().lower()
+    if email_value and "@" in email_value:
+        values.add(email_value.split("@", 1)[0])
+    normalized_values = set()
+    for value in values:
+        if not value:
+            continue
+        normalized_values.add(value)
+        normalized_values.add(" ".join(value.split()))
+        normalized_values.add("".join(value.split()))
+    return bool(normalized_values & candidates)
+
+
+def _ensure_staff_identity(sb, staff_row: dict) -> tuple[str, str]:
+    existing_user_id = staff_row.get("user_id")
+    email = str(staff_row.get("email") or "").strip().lower()
+    if not email:
+        email = f"staff-{staff_row['id']}@staff.oxidian.local"
+
+    if existing_user_id:
+        user_id = existing_user_id
+    else:
+        existing_user = _find_auth_user_by_email(sb, email)
+        if existing_user:
+            user_id = _normalize_auth_user_id(existing_user)
+        else:
+            auth_res = sb.auth.admin.create_user({
+                "email": email,
+                "password": secrets.token_urlsafe(18),
+                "email_confirm": True,
+                "user_metadata": {
+                    "full_name": staff_row.get("name") or "",
+                    "staff_user_id": staff_row["id"],
+                    "provisioned_by": "staff_pin_login",
+                },
+            })
+            user_id = getattr(getattr(auth_res, "user", None), "id", None)
+        if not user_id:
+            raise RuntimeError("No se pudo provisionar la identidad del staff")
+        sb.table("staff_users").update({
+            "user_id": user_id,
+            "email": email,
+            "updated_at": _iso_now(),
+        }).eq("id", staff_row["id"]).execute()
+
+    memberships = sb.table("user_memberships") \
+        .select("id,is_active") \
+        .eq("user_id", user_id) \
+        .eq("role", staff_row.get("role")) \
+        .eq("store_id", staff_row.get("store_id")) \
+        .eq("branch_id", staff_row.get("branch_id")) \
+        .execute().data or []
+
+    if memberships:
+        membership = memberships[0]
+        if membership.get("is_active") is not True:
+            sb.table("user_memberships").update({"is_active": True}).eq("id", membership["id"]).execute()
+    else:
+        sb.table("user_memberships").insert({
+            "user_id": user_id,
+            "role": staff_row.get("role"),
+            "tenant_id": staff_row.get("tenant_id"),
+            "store_id": staff_row.get("store_id"),
+            "branch_id": staff_row.get("branch_id"),
+            "is_active": True,
+            "metadata": {
+                "full_name": staff_row.get("name") or "",
+                "email": email,
+                "provisioned_by": "staff_pin_login",
+                "staff_user_id": staff_row["id"],
+            },
+        }).execute()
+
+    return user_id, email
+
+
+def _serialize_public_order_item(item: dict) -> dict:
+    quantity = max(1, int(item.get("qty") or item.get("quantity") or 1))
+    price = float(item.get("price") or 0)
+    name = str(item.get("product_name") or item.get("name") or "").strip()
+    variants = item.get("variants")
+    modifiers = item.get("modifiers")
+    return {
+        "id": item.get("id"),
+        "product_name": name,
+        "qty": quantity,
+        "price": price,
+        "emoji": item.get("emoji") or "",
+        "image_url": item.get("image_url"),
+        "notes": item.get("notes") or None,
+        "variants": variants if isinstance(variants, (list, dict, str)) else [],
+        "modifiers": modifiers if isinstance(modifiers, (list, dict, str)) else [],
+    }
+
 # ── Preflight CORS ────────────────────────────────────────────────────
 @app.before_request
 def handle_options():
@@ -231,6 +394,190 @@ def create_public_landing_request():
             "owner_account_created": owner_account_created,
             "owner_account_exists": owner_account_exists,
         }, "Solicitud creada", 201)
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/public/staff/login", methods=["POST"])
+def staff_pin_login():
+    body = request.get_json(silent=True) or {}
+    store_slug = str(body.get("storeSlug", "")).strip().lower()
+    branch_slug = str(body.get("branchSlug", "")).strip().lower()
+    username = str(body.get("username", "")).strip()
+    pin = str(body.get("pin", "")).strip()
+
+    if not store_slug or not branch_slug:
+        return _err("storeSlug y branchSlug son requeridos")
+    if not username or not pin:
+        return _err("username y pin son requeridos")
+
+    try:
+        sb = _sb()
+        store = sb.table("stores") \
+            .select("id,name,slug,tenant_id,theme_tokens,status,public_visible") \
+            .eq("slug", store_slug) \
+            .maybe_single().execute().data
+        if not store or store.get("status") not in ("active", "draft", "paused"):
+            return _err("Tienda no encontrada", 404)
+
+        branch = sb.table("branches") \
+            .select("id,name,slug,store_id,tenant_id,status,public_visible") \
+            .eq("store_id", store["id"]) \
+            .eq("slug", branch_slug) \
+            .maybe_single().execute().data
+        if not branch or branch.get("status") != "active":
+            return _err("Sede no encontrada", 404)
+
+        staff_rows = sb.table("staff_users") \
+            .select("id,user_id,tenant_id,store_id,branch_id,name,email,role,pin,is_active,metadata") \
+            .eq("store_id", store["id"]) \
+            .eq("branch_id", branch["id"]) \
+            .eq("is_active", True) \
+            .execute().data or []
+        staff = next((row for row in staff_rows if _staff_matches_identifier(row, username)), None)
+        if not staff:
+            return _err("Usuario no encontrado en esta sede", 404)
+        if not _pin_matches(pin, staff.get("pin")):
+            return _err("PIN incorrecto", 401)
+
+        user_id, email = _ensure_staff_identity(sb, staff)
+        access_token = _build_supabase_access_token(
+            user_id=user_id,
+            app_role=staff["role"],
+            tenant_id=staff.get("tenant_id") or store.get("tenant_id"),
+            store_id=store["id"],
+            branch_id=branch["id"],
+            email=email,
+        )
+        auth_expires_at = datetime.fromtimestamp(
+            datetime.now(timezone.utc).timestamp() + (8 * 60 * 60),
+            timezone.utc,
+        ).isoformat()
+
+        now_iso = _iso_now()
+        sb.table("staff_users").update({
+            "is_online": True,
+            "last_seen_at": now_iso,
+            "updated_at": now_iso,
+        }).eq("id", staff["id"]).execute()
+
+        membership = {
+            "role": staff["role"],
+            "tenant_id": staff.get("tenant_id") or store.get("tenant_id"),
+            "store_id": store["id"],
+            "branch_id": branch["id"],
+            "is_active": True,
+            "metadata": {
+                "full_name": staff.get("name") or "",
+                "email": email,
+                "staff_user_id": staff["id"],
+            },
+        }
+
+        session = {
+            "id": staff["id"],
+            "name": staff.get("name") or "",
+            "role": staff["role"],
+            "store_id": store["id"],
+            "branch_id": branch["id"],
+            "auth_expires_at": auth_expires_at,
+            "supabase_access_token": access_token,
+            "session_membership": membership,
+            "user": {"id": user_id, "email": email},
+            "_source": "staff_pin",
+        }
+        return _ok({
+            "session": session,
+            "store": {
+                "id": store["id"],
+                "slug": store["slug"],
+                "name": store["name"],
+                "theme_tokens": store.get("theme_tokens") or {},
+            },
+            "branch": {
+                "id": branch["id"],
+                "slug": branch["slug"],
+                "name": branch["name"],
+            },
+        }, "Staff autenticado")
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/api/backend/public/orders", methods=["POST"])
+def create_public_order():
+    body = request.get_json(silent=True) or {}
+    store_id = str(body.get("store_id", "")).strip()
+    branch_id = str(body.get("branch_id", "")).strip() or None
+    customer_name = str(body.get("customer_name", "")).strip()
+    customer_phone = str(body.get("customer_phone", "")).strip()
+    delivery_address = str(body.get("delivery_address", "")).strip()
+    notes = str(body.get("notes", "")).strip() or None
+    raw_items = body.get("items") or []
+    delivery_fee = float(body.get("delivery_fee") or 0)
+
+    if not store_id:
+        return _err("store_id requerido")
+    if not branch_id:
+        return _err("branch_id requerido")
+    if not customer_name or not customer_phone or not delivery_address:
+        return _err("customer_name, customer_phone y delivery_address son requeridos")
+    if not isinstance(raw_items, list) or len(raw_items) == 0:
+        return _err("El carrito no puede estar vacio")
+
+    try:
+        sb = _sb()
+        store = sb.table("stores") \
+            .select("id,tenant_id,status,public_visible") \
+            .eq("id", store_id) \
+            .maybe_single().execute().data
+        if not store or store.get("status") != "active" or store.get("public_visible") is not True:
+            return _err("Tienda no disponible", 404)
+
+        branch = sb.table("branches") \
+            .select("id,name,store_id,tenant_id,status,public_visible") \
+            .eq("id", branch_id) \
+            .eq("store_id", store_id) \
+            .maybe_single().execute().data
+        if not branch or branch.get("status") != "active" or branch.get("public_visible") is not True:
+            return _err("Sede no disponible", 404)
+
+        items = [_serialize_public_order_item(item) for item in raw_items]
+        subtotal = sum(float(item["price"]) * int(item["qty"]) for item in items)
+        total = subtotal + delivery_fee
+
+        last_order = sb.table("orders") \
+            .select("order_number") \
+            .eq("store_id", store_id) \
+            .eq("branch_id", branch_id) \
+            .order("order_number", desc=True) \
+            .limit(1).maybe_single().execute().data or {}
+        next_order_number = int(last_order.get("order_number") or 0) + 1
+        if next_order_number <= 0:
+            next_order_number = 1
+
+        payload = {
+            "tenant_id": branch.get("tenant_id") or store.get("tenant_id"),
+            "store_id": store_id,
+            "branch_id": branch_id,
+            "order_number": next_order_number,
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "delivery_address": delivery_address,
+            "address": delivery_address,
+            "items": items,
+            "total": total,
+            "status": "pending",
+            "notes": notes,
+        }
+        inserted = sb.table("orders").insert(payload).execute().data or [{}]
+        order = inserted[0]
+        return _ok({
+            "id": order.get("id"),
+            "order_number": order.get("order_number", next_order_number),
+            "total": total,
+            "branch_name": branch.get("name"),
+        }, "Pedido creado", 201)
     except Exception as e:
         return _err(str(e), 500)
 

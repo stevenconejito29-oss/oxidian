@@ -259,26 +259,60 @@ export function slugify(v) {
 }
 
 // ─── Card ────────────────────────────────────────────────────────
-export function Card({ children, style, className }) {
+export function Card({ children, style, className, title, sub, action, accent }) {
+  const borderStyle = accent
+    ? `1px solid ${accent}40`
+    : '1px solid var(--color-border-secondary)'
   return (
     <div className={`ods-card ${className||''}`} style={{
       background:'var(--color-background-primary)',
-      border:'1px solid var(--color-border-secondary)',
+      border:borderStyle,
+      borderTop: accent ? `4px solid ${accent}` : borderStyle,
       borderRadius:12,
       padding:20,
       ...style
-    }}>{children}</div>
+    }}>
+      {(title || sub || action) && (
+        <div style={{
+          display:'flex',
+          justifyContent:'space-between',
+          alignItems:'flex-start',
+          gap:12,
+          marginBottom:children ? 16 : 0,
+        }}>
+          <div style={{minWidth:0}}>
+            {title && <div style={{fontSize:15,fontWeight:700,color:'var(--color-text-primary)'}}>{title}</div>}
+            {sub && <div style={{fontSize:12,color:'var(--color-text-secondary)',marginTop:4}}>{sub}</div>}
+          </div>
+          {action && <div style={{flexShrink:0}}>{action}</div>}
+        </div>
+      )}
+      {children}
+    </div>
   )
 }
 
 // ─── Btn ─────────────────────────────────────────────────────────
-export function Btn({ children, onClick, variant='primary', size='md', disabled, style, type='button' }) {
+export function Btn({
+  children,
+  onClick,
+  variant='primary',
+  size='md',
+  disabled,
+  style,
+  sx,
+  type='button',
+  full=false,
+}) {
   const base = {
     display:'inline-flex', alignItems:'center', gap:6, fontWeight:600,
     borderRadius:8, border:'none', cursor:disabled?'not-allowed':'pointer',
     opacity:disabled?0.5:1, transition:'filter .15s',
     fontSize: size==='sm'?13:size==='lg'?16:14,
     padding: size==='sm'?'6px 12px':size==='lg'?'12px 22px':'9px 18px',
+    justifyContent:'center',
+    width: full ? '100%' : undefined,
+    ...sx,
     ...style
   }
   const variants = {
@@ -286,6 +320,9 @@ export function Btn({ children, onClick, variant='primary', size='md', disabled,
     secondary:{ background:'var(--color-background-secondary)', color:'var(--color-text-primary)', border:'1px solid var(--color-border-secondary)' },
     danger:   { background:'#ef4444', color:'#fff' },
     ghost:    { background:'transparent', color:'var(--color-text-primary)', border:'1px solid var(--color-border-secondary)' },
+    success:  { background:'#16a34a', color:'#fff' },
+    blue:     { background:'#2563eb', color:'#fff' },
+    purple:   { background:'#7c3aed', color:'#fff' },
   }
   return (
     <button type={type} onClick={onClick} disabled={disabled} className="ods-btn"

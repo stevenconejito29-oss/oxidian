@@ -2,12 +2,130 @@
 
 ## Fecha
 
+- 2026-04-23
 - 2026-04-22
 - 2026-04-21
 - 2026-04-20
 - 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-23 - rutas publicas criticas integradas en main para produccion
+
+### Causa raiz
+
+- `main` seguia sin dos piezas criticas que ya existian en el worktree de implementacion:
+  - `POST /api/backend/public/staff/login`
+  - `POST /api/backend/public/orders`
+- El frontend publicado aun dependia de runtime legacy para:
+  - login staff por PIN contra `staff_users` desde el navegador
+  - checkout publico escribiendo directo en `orders` sin backend ni `branch_id` garantizado
+  - resolucion de token por ruta sin contemplar `/branch/kitchen`, `/branch/riders` y `/branch/admin`
+- Resultado: la landing de owners estaba viva, pero el runtime operacional de sedes no estaba listo para produccion.
+
+### Implementado
+
+- `api/index.py`
+  - nuevas helpers:
+    - `_iso_now`
+    - `_pin_matches`
+    - `_build_supabase_access_token`
+    - `_staff_identity_candidates`
+    - `_staff_matches_identifier`
+    - `_ensure_staff_identity`
+    - `_serialize_public_order_item`
+  - nueva ruta `POST /api/backend/public/staff/login`
+    - valida store + branch
+    - autentica staff por identificador + PIN
+    - provisiona usuario Auth si falta
+    - asegura `user_memberships`
+    - devuelve sesion con `session_membership`, `store_id`, `branch_id` y JWT usable por el frontend
+  - nueva ruta `POST /api/backend/public/orders`
+    - exige `store_id` + `branch_id`
+    - valida store y branch publicos/activos
+    - serializa items
+    - genera `order_number` correlativo por sede
+    - inserta el pedido con `tenant_id`, `branch_id` y `delivery_address`
+- `frontend/src/modules/auth/pages/StaffLoginPage.jsx`
+  - deja de usar el cliente legacy directo para autenticar staff
+  - ahora consume `/public/staff/login`
+  - persiste la sesion completa devuelta por backend
+  - redirige con `store_id` y `branch_id` en query params
+- `frontend/src/modules/public-menu/components/CheckoutDrawer.jsx`
+  - deja de insertar directo en Supabase
+  - ahora consume `/public/orders`
+  - incluye `branch_id`
+  - soporta edicion de cantidades y quitar items dentro del drawer
+  - muestra contexto de tienda y sede
+- `frontend/src/modules/public-menu/components/CheckoutDrawer.module.css`
+  - nuevas clases para el control de cantidades y metadata de sede
+- `frontend/src/modules/public-menu/hooks/useStorePublicConfig.js`
+  - usa el cliente canonico `shared/supabase/client`
+- `frontend/src/legacy/lib/appSession.js`
+  - resuelve correctamente sesiones en rutas:
+    - `/branch/kitchen`
+    - `/branch/riders`
+    - `/branch/admin`
+- Nuevas pruebas de contrato:
+  - `frontend/tests/publicBranchFlowContract.test.mjs`
+  - `test_public_backend_contract.py`
+
+### Validacion prevista
+
+- `node --test --test-isolation=none frontend/tests/authSessionContract.test.mjs frontend/tests/oxidianDsContract.test.mjs frontend/tests/publicBranchFlowContract.test.mjs`
+- `npm run build` en `frontend`
+- `backend\.venv\Scripts\python.exe -m unittest test_schema_contract.py test_public_backend_contract.py -v`
+- `backend\.venv\Scripts\python.exe -m py_compile api\index.py`
+
+### Nota operativa
+
+- Este corte deja `main` con el backend y frontend minimos que Vercel necesita para publicar:
+  - landing owner
+  - login owner pendiente de aprobacion estable
+  - login staff por PIN por sede
+  - checkout publico por branch
+- El siguiente paso operativo tras verificar es commit/push/redeploy de `main`.
+
+## Iteracion 2026-04-23 - design system alineado y bootstrap de landing sin flash verde
+
+### Causa raiz
+
+- El proyecto ya compilaba en algunos cortes locales, pero seguia con inconsistencias reales entre el contrato esperado por las vistas y lo que exponia `OxidianDS.jsx`:
+  - `Card` ignoraba `title`, `sub`, `action` y `accent`
+  - `Btn` ignoraba `full`, `sx` y variantes usadas por branch/staff (`success`, `blue`, `purple`)
+- `LoginPage.jsx` y otras pantallas de auth usaban variables de exito que no existian en `globals.css`.
+- El splash inicial del shell seguia siendo sensible a percepcion de “pantalla verde rota”; el bootstrap visible del HTML debia quedar alineado al landing real.
+- `useRealtimeOrders` seguia compartiendo nombre de canal entre sedes del mismo store, aunque la query ya filtraba por `branch_id`.
+
+### Implementado
+
+- `frontend/src/shared/ui/OxidianDS.jsx`
+  - `Card` ahora soporta `title`, `sub`, `action` y `accent`.
+  - `Btn` ahora soporta:
+    - `full`
+    - `sx`
+    - variantes `success`, `blue` y `purple`
+- `frontend/src/styles/globals.css`
+  - nuevas variables:
+    - `--color-text-success`
+    - `--color-background-success`
+- `frontend/src/legacy/lib/useRealtimeOrders.js`
+  - el `channelName` ahora incorpora `branchId` para separar mejor realtime por sede.
+- `frontend/index.html`
+  - el primer frame del shell queda alineado con el landing crema, no con fondo verde.
+- `frontend/tests/oxidianDsContract.test.mjs`
+  - nueva prueba de contrato para fijar el API esperado del design system y las variables globales de feedback.
+
+### Validacion
+
+- `node --test --test-isolation=none tests/oxidianDsContract.test.mjs tests/authSessionContract.test.mjs`
+- `node --test --test-isolation=none tests/backendBase.test.mjs tests/pipelineAdmission.test.mjs tests/storeCatalog.test.mjs tests/superAdminPipeline.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este corte arregla el contrato local del frontend y el flujo visible del arranque.
+- La URL publicada no cambiara hasta hacer deploy de estos cambios en la rama que usa Vercel.
 
 ## Iteracion 2026-04-22 - endurecimiento del arranque auth y estado pendiente de aprobacion
 

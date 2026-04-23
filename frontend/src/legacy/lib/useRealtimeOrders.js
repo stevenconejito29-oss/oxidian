@@ -66,7 +66,7 @@ export function useRealtimeOrders({
     setLoading(true)
     refresh()
 
-    const channelName = `orders-rt-${activeStoreId}-${statusKey}-${riderId || 'all'}-${cookId || 'all'}`
+    const channelName = `orders-rt-${activeStoreId}-${branchId || 'all'}-${statusKey}-${riderId || 'all'}-${cookId || 'all'}`
 
     channelRef.current = supabase
       .channel(channelName)
@@ -78,7 +78,7 @@ export function useRealtimeOrders({
     return () => {
       if (channelRef.current) supabase.removeChannel(channelRef.current)
     }
-  }, [refresh, activeStoreId, statusKey, riderId, cookId]) // eslint-disable-line
+  }, [refresh, activeStoreId, branchId, statusKey, riderId, cookId]) // eslint-disable-line
 
   return { orders, loading, refresh }
 }

@@ -1,14 +1,23 @@
 import React from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../../legacy/lib/supabase'
+import { supabaseAuth } from '../../../shared/supabase/client'
+import { buildBackendUrl } from '../../../shared/lib/backendBase'
 import { persistStoredSession, STORAGE_KEYS } from '../../../legacy/lib/appSession'
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
+const ROLE_PATHS = {
+  kitchen: 'kitchen',
+  rider: 'riders',
+  cashier: 'admin',
+  branch_manager: 'admin',
+  store_operator: 'admin',
+  store_admin: 'admin',
 }
 
-const ROLE_PATHS = { kitchen: 'kitchen', rider: 'riders', cashier: 'admin', branch_manager: 'admin' }
+function resolveStorageKey(role) {
+  if (role === 'rider') return STORAGE_KEYS.repartidor
+  if (role === 'kitchen') return STORAGE_KEYS.cocina
+  return STORAGE_KEYS.admin
+}
 
 export default function StaffLoginPage() {
   const { storeSlug, branchSlug } = useParams()
@@ -22,48 +31,78 @@ export default function StaffLoginPage() {
   const [error, setError]       = React.useState('')
 
   React.useEffect(() => {
+    let cancelled = false
+
     async function load() {
-      if (!storeSlug || !branchSlug) { setLoading(false); return }
-      const { data: s } = await supabase.from('stores')
-        .select('id, name, theme_tokens').eq('slug', storeSlug).maybeSingle()
-      const { data: b } = await supabase.from('branches')
-        .select('id, name, store_id').eq('store_id', s?.id).eq('slug', branchSlug).maybeSingle()
-      setStore(s); setBranch(b); setLoading(false)
+      if (!storeSlug || !branchSlug) {
+        setLoading(false)
+        return
+      }
+
+      const { data: storeData } = await supabaseAuth
+        .from('stores')
+        .select('id, name, slug, theme_tokens')
+        .eq('slug', storeSlug)
+        .maybeSingle()
+      const { data: branchData } = await supabaseAuth
+        .from('branches')
+        .select('id, name, slug, store_id')
+        .eq('store_id', storeData?.id)
+        .eq('slug', branchSlug)
+        .maybeSingle()
+
+      if (cancelled) return
+      setStore(storeData || null)
+      setBranch(branchData || null)
+      setLoading(false)
     }
+
     load()
+    return () => { cancelled = true }
   }, [storeSlug, branchSlug])
 
-  async function handleLogin(e) {
-    e.preventDefault(); setBusy(true); setError('')
+  async function handleLogin(event) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+
     try {
-      if (!branch) throw new Error('Sede no encontrada')
-      const hashHex = await sha256(pin)
-      const { data: staff, error: se } = await supabase
-        .from('staff_users')
-        .select('*')
-        .eq('store_id', branch.store_id)
-        .eq('branch_id', branch.id)
-        .eq('is_active', true)
-        .or(`name.ilike.${username},username.eq.${username}`)
-        .maybeSingle()
-      if (se || !staff) throw new Error('Usuario no encontrado en esta sede')
-      const pinMatch = staff.pin === pin || staff.pin === hashHex
-      if (!pinMatch) throw new Error('PIN incorrecto')
-      const session = {
-        id: staff.id, name: staff.name, role: staff.role,
-        store_id: branch.store_id, branch_id: branch.id,
-        auth_expires_at: new Date(Date.now() + 8*3600*1000).toISOString(),
-        supabase_access_token: '',
-        user: { id: staff.user_id || staff.id },
+      const response = await fetch(buildBackendUrl('/public/staff/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeSlug,
+          branchSlug,
+          username: username.trim(),
+          pin: pin.trim(),
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error || payload?.message || 'No se pudo iniciar sesión.')
+
+      const session = payload?.data?.session || payload?.session
+      const resolvedStore = payload?.data?.store || payload?.store || store
+      const resolvedBranch = payload?.data?.branch || payload?.branch || branch
+
+      if (!session?.supabase_access_token || !session?.session_membership?.role) {
+        throw new Error('La sesión de staff llegó incompleta.')
       }
-      const storageKey = staff.role === 'rider'
-        ? STORAGE_KEYS.repartidor
-        : staff.role === 'kitchen' ? STORAGE_KEYS.cocina : STORAGE_KEYS.admin
-      persistStoredSession(storageKey, session)
-      const dest = ROLE_PATHS[staff.role] || 'admin'
-      navigate(`/branch/${dest}`)
-    } catch(e) { setError(e.message) }
-    setBusy(false)
+
+      persistStoredSession(resolveStorageKey(session.role), session)
+      setStore(resolvedStore || null)
+      setBranch(resolvedBranch || null)
+
+      const dest = ROLE_PATHS[session.role] || 'admin'
+      const query = new URLSearchParams({
+        store_id: session.store_id || resolvedStore?.id || '',
+        branch_id: session.branch_id || resolvedBranch?.id || '',
+      })
+      navigate(`/branch/${dest}?${query.toString()}`, { replace: true })
+    } catch (nextError) {
+      setError(nextError.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (loading) return (

@@ -37,7 +37,7 @@ class SchemaContractTest(unittest.TestCase):
         self.assertIn("user_memberships_super_admin_all", text)
 
     def test_plan_migration_contract(self) -> None:
-        text = read_text(PLAN_MIGRATION)
+        text = read_text(PLAN_MIGRATION).lower()
         self.assertIn("drop constraint if exists tenant_subscriptions_status_check", text)
         self.assertIn("add constraint tenant_subscriptions_status_check", text)
         self.assertIn("create or replace function public.change_tenant_plan(", text)

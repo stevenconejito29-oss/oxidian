@@ -1,5 +1,25 @@
 :root {
   color-scheme: light;
+
+  /* ── Variables de interfaz (usadas por componentes nuevos / admin panels) ── */
+  /* Fondos */
+  --color-background-primary:    #FFFFFF;
+  --color-background-secondary:  #F6F0E5;
+  --color-background-tertiary:   #EDE8DF;
+  --color-background-danger:     #FEF2F2;
+  --color-background-success:    #F0FDF4;
+
+  /* Texto */
+  --color-text-primary:    #1F2937;
+  --color-text-secondary:  #6B7280;
+  --color-text-tertiary:   #9CA3AF;
+  --color-text-danger:     #DC2626;
+  --color-text-success:    #15803D;
+
+  /* Bordes */
+  --color-border-primary:    rgba(31, 41, 55, 0.25);
+  --color-border-secondary:  rgba(31, 41, 55, 0.15);
+  --color-border-tertiary:   rgba(31, 41, 55, 0.08);
 }
 
 body {
@@ -9,4 +29,3 @@ body {
     radial-gradient(circle at top, rgba(240, 198, 110, 0.18), transparent 32%),
     linear-gradient(180deg, #f8f3e8 0%, #f3ecdf 100%);
 }
-
