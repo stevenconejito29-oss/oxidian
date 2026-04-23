@@ -51,7 +51,7 @@ export default function LandingPage() {
     password_confirm: '',
   })
   const [sending, setSending] = React.useState(false)
-  const [sent, setSent] = React.useState(false)
+  const [sent, setSent] = React.useState(null)
   const [error, setError] = React.useState('')
 
   if (!loading && isAuthenticated && role !== 'anonymous') {
@@ -68,7 +68,7 @@ export default function LandingPage() {
       if (form.password.length < 8) throw new Error('La contrasena debe tener al menos 8 caracteres')
       if (form.password !== form.password_confirm) throw new Error('Las contrasenas no coinciden')
 
-      await submitLandingRequest({
+      const result = await submitLandingRequest({
         full_name: form.full_name,
         email: form.email,
         phone: form.phone,
@@ -78,7 +78,7 @@ export default function LandingPage() {
         message: form.message,
         password: form.password,
       })
-      setSent(true)
+      setSent(result || { email: form.email, owner_account_exists: false })
     } catch (err) {
       setError(err.message)
     }
@@ -247,7 +247,33 @@ export default function LandingPage() {
               <div style={{ fontSize: 40, marginBottom: 12 }}>OK</div>
               <div style={{ fontWeight: 500, marginBottom: 6 }}>Solicitud enviada</div>
               <div style={{ color: 'var(--color-text-secondary)' }}>
-                Tu cuenta quedo creada y esta pendiente de aprobacion. Cuando el super admin la active, podras entrar con tu email y contrasena.
+                {sent.owner_account_exists
+                  ? 'Ya existia una cuenta con ese correo. Hemos reutilizado ese acceso y tu solicitud queda pendiente de aprobacion.'
+                  : 'Tu cuenta quedo creada y esta pendiente de aprobacion. Cuando el super admin la active, podras entrar con tu email y contrasena.'}
+              </div>
+              {sent.email && (
+                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12, marginTop: 12 }}>
+                  Correo detectado: <strong>{sent.email}</strong>
+                </div>
+              )}
+              <div style={{ marginTop: 18 }}>
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border-secondary)',
+                    background: 'var(--color-background-primary)',
+                    color: 'var(--color-text-primary)',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                >
+                  Ir al login
+                </button>
               </div>
             </div>
           ) : (

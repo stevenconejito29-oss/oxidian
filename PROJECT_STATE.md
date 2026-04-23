@@ -10,6 +10,74 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-23 - fix SQL para landing_requests desde backend service_role
+
+### Causa raiz
+
+- El flujo de solicitud de dueño ya llegaba al backend, pero Supabase devolvia:
+  - `permission denied for table landing_requests`
+  - codigo `42501`
+- Eso indica problema de grants efectivos en base de datos, no del formulario ni del deploy frontend.
+- El backend crea leads usando `SUPABASE_SERVICE_ROLE_KEY`, asi que `landing_requests` necesita permisos explicitos para `service_role`.
+
+### Implementado
+
+- Nueva migracion:
+  - `supabase/migrations/0011_fix_landing_requests_service_role_grants.sql`
+- La migracion:
+  - da `usage` sobre schema `public` a `service_role`
+  - da `select, insert, update, delete` sobre `public.landing_requests` a `service_role`
+  - reafirma RLS y recrea politicas idempotentes de insert publico y gestion super admin
+- Actualizado:
+  - `database_schema.sql`
+  - `test_schema_contract.py`
+
+### Validacion prevista
+
+- `backend\\.venv\\Scripts\\python.exe -m unittest test_schema_contract.py -v`
+
+### Nota operativa
+
+- Este fix requiere ejecutar la migracion en Supabase o correr el SQL en el editor del proyecto remoto.
+- Sin eso, el deploy puede estar bien y aun asi fallar la creacion de leads de dueños.
+
+## Iteracion 2026-04-23 - owner signup tolerante a email existente y login de vuelta a landing
+
+### Causa raiz
+
+- El formulario publico de dueños seguia fallando cuando el correo ya existia en Supabase Auth, porque el backend podia recibir el error de email duplicado desde `create_user`.
+- El CTA de `LoginPage` para usuarios sin cuenta seguia navegando a `/onboarding`, pero esa ya no es la entrada publica correcta; la landing real vive en `/`.
+
+### Implementado
+
+- `api/index.py`
+  - nueva helper `_is_duplicate_auth_email_error`
+  - `POST /api/backend/public/landing-request` ahora trata el email ya registrado como cuenta reutilizable:
+    - no rompe la solicitud
+    - marca `owner_account_exists = True`
+    - intenta reutilizar el usuario existente si puede resolverlo
+- `frontend/src/modules/admin/pages/LandingPage.jsx`
+  - el estado de exito ahora conserva el payload de la solicitud
+  - si `owner_account_exists` es true, muestra un mensaje claro en lugar de aparentar error
+  - añade CTA `Ir al login`
+- `frontend/src/modules/auth/pages/LoginPage.jsx`
+  - `Solicitar acceso` vuelve a `/`, que es la landing publica correcta
+- Nuevas/actualizadas pruebas:
+  - `frontend/tests/ownerEntryContract.test.mjs`
+  - `test_public_backend_contract.py`
+
+### Validacion prevista
+
+- `node --test --test-isolation=none frontend/tests/ownerEntryContract.test.mjs frontend/tests/startupConfigContract.test.mjs frontend/tests/bootstrapCacheContract.test.mjs frontend/tests/landingAuthContract.test.mjs frontend/tests/authSessionContract.test.mjs frontend/tests/oxidianDsContract.test.mjs frontend/tests/publicBranchFlowContract.test.mjs`
+- `backend\.venv\Scripts\python.exe -m unittest test_public_backend_contract.py -v`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este corte cierra el flujo owner desde la landing:
+  - si el correo ya existe, la solicitud sigue
+  - si el usuario quiere volver al acceso, lo hace por la landing y login reales
+
 ## Iteracion 2026-04-23 - guard de configuracion frontend para evitar white screen total
 
 ### Causa raiz plausible verificada

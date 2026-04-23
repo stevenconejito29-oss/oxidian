@@ -153,6 +153,21 @@ def _normalize_auth_user_metadata(user):
     return dict(raw or {})
 
 
+def _is_duplicate_auth_email_error(error: Exception) -> bool:
+    message = str(error or "").strip().lower()
+    if not message:
+        return False
+    markers = (
+        "already been registered",
+        "already registered",
+        "user already registered",
+        "email address has already been registered",
+        "already exists",
+        "duplicate key value",
+    )
+    return any(marker in message for marker in markers)
+
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -359,19 +374,26 @@ def create_public_landing_request():
                 owner_account_exists = True
                 owner_user_id = _normalize_auth_user_id(existing)
             else:
-                auth_res = sb.auth.admin.create_user({
-                    "email": email,
-                    "password": password,
-                    "email_confirm": True,
-                    "user_metadata": {
-                        "full_name": full_name,
-                        "pending_approval": True,
-                        "requested_via": "landing_request",
-                        "business_name": business_name,
-                    },
-                })
-                owner_account_created = True
-                owner_user_id = getattr(getattr(auth_res, "user", None), "id", None)
+                try:
+                    auth_res = sb.auth.admin.create_user({
+                        "email": email,
+                        "password": password,
+                        "email_confirm": True,
+                        "user_metadata": {
+                            "full_name": full_name,
+                            "pending_approval": True,
+                            "requested_via": "landing_request",
+                            "business_name": business_name,
+                        },
+                    })
+                    owner_account_created = True
+                    owner_user_id = getattr(getattr(auth_res, "user", None), "id", None)
+                except Exception as auth_error:
+                    if not _is_duplicate_auth_email_error(auth_error):
+                        raise
+                    owner_account_exists = True
+                    existing = _find_auth_user_by_email(sb, email)
+                    owner_user_id = _normalize_auth_user_id(existing)
 
         res = sb.table("landing_requests").insert({
             "full_name": full_name,

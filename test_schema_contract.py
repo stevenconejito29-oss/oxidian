@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent
 RESET = ROOT / "supabase" / "migrations" / "RESET_COMPLETE.sql"
 PLAN_MIGRATION = ROOT / "supabase" / "migrations" / "0008_plans_and_feature_overrides.sql"
 SCHEMA_INDEX = ROOT / "database_schema.sql"
+LANDING_GRANTS_MIGRATION = ROOT / "supabase" / "migrations" / "0011_fix_landing_requests_service_role_grants.sql"
 
 
 def read_text(path: Path) -> str:
@@ -48,6 +49,14 @@ class SchemaContractTest(unittest.TestCase):
         self.assertIn("public.categories", text)
         self.assertIn("order_number ya es entero", text)
         self.assertIn("plan_id starter", text)
+
+    def test_landing_requests_backend_grants_contract(self) -> None:
+        text = read_text(LANDING_GRANTS_MIGRATION).lower()
+        self.assertIn("grant usage on schema public to service_role;", text)
+        self.assertIn("grant select, insert, update, delete", text)
+        self.assertIn("on table public.landing_requests", text)
+        self.assertIn("to service_role;", text)
+        self.assertIn("create policy landing_requests_public_insert", text)
 
 
 if __name__ == "__main__":

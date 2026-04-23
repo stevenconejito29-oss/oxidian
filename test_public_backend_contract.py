@@ -27,6 +27,13 @@ class PublicBackendContractTest(unittest.TestCase):
         self.assertIn('"tenant_id": branch.get("tenant_id") or store.get("tenant_id")', text)
         self.assertIn("_serialize_public_order_item", text)
 
+    def test_landing_request_treats_duplicate_owner_email_as_reusable_account(self) -> None:
+        text = read_text(API_INDEX)
+        self.assertIn("def _is_duplicate_auth_email_error(error: Exception) -> bool:", text)
+        self.assertIn("already been registered", text)
+        self.assertIn("owner_account_exists = True", text)
+        self.assertIn("if not _is_duplicate_auth_email_error(auth_error):", text)
+
 
 if __name__ == "__main__":
     unittest.main()

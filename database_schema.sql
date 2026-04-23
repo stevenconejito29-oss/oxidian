@@ -17,7 +17,8 @@
 --   7. supabase/migrations/0006_fix_rls_auth_errors.sql
 --   8. supabase/migrations/0007_fix_security_and_missing_tables.sql
 --   9. supabase/migrations/0008_plans_and_feature_overrides.sql
---  10. supabase/migrations/0009_fix_tenants_rls_tenant_owner.sql  ← NUEVO
+--  10. supabase/migrations/0009_fix_tenants_rls_tenant_owner.sql
+--  11. supabase/migrations/0011_fix_landing_requests_service_role_grants.sql  ← NUEVO
 --
 -- Regla de trabajo:
 --   - cualquier nueva funcionalidad con datos debe reflejarse aqui primero
@@ -33,6 +34,8 @@
 --   - tenant_subscriptions incluye feature_overrides, notes, plan_id starter y status
 --   - el proyecto remoto de Supabase no parece tener activadas todas las
 --     policies/grants esperadas, aunque las migraciones locales si las definen
+--   - landing_requests requiere grant efectivo para service_role porque el
+--     backend Flask crea leads con la key server-side
 --
 -- Entidades base esperadas
 -- ============================================================
@@ -114,6 +117,7 @@
 -- categories: lectura publica del catalogo base por store
 -- tenant_subscriptions: lectura por tenant y control total por super admin
 -- landing_requests: insercion publica + gestion por super admin
+--   + grant efectivo para service_role desde backend
 --
 -- Nota operativa importante
 -- ============================================================

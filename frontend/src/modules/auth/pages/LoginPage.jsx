@@ -168,7 +168,7 @@ export default function LoginPage() {
           color: 'var(--color-text-secondary)' }}>
           ¿Sin cuenta?{' '}
           <span style={{ color: 'var(--color-text-primary)', cursor: 'pointer', textDecoration: 'underline' }}
-            onClick={() => navigate('/onboarding')}>
+            onClick={() => navigate('/')}>
             Solicitar acceso
           </span>
         </div>
