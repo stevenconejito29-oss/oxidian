@@ -10,6 +10,36 @@
 - 2026-04-17
 - 2026-04-18
 
+## Iteracion 2026-04-23 - guard de configuracion frontend para evitar white screen total
+
+### Causa raiz plausible verificada
+
+- `@supabase/supabase-js` rompe en runtime si se ejecuta `createClient(undefined, undefined)` con el mensaje `supabaseUrl is required.`
+- En este proyecto el cliente Supabase se crea al importar `frontend/src/legacy/lib/supabase.js`, es decir, muy temprano en el arranque global.
+- Si `VITE_SUPABASE_URL` o `VITE_SUPABASE_ANON_KEY` no entran al build del frontend en Vercel, la app puede quedar completamente blanca antes de renderizar la landing.
+
+### Implementado
+
+- `frontend/src/legacy/lib/supabase.js`
+  - nuevo flag `isSupabaseConfigured`
+  - nuevo mensaje canonico `SUPABASE_CONFIG_ERROR`
+  - fallback seguro `createThrowingClient()` para que el import no rompa el bundle entero
+- `frontend/src/main.jsx`
+  - nueva pantalla visible `Configuracion incompleta`
+  - el router solo se monta si el frontend realmente tiene configuradas las `VITE_*`
+- `frontend/tests/startupConfigContract.test.mjs`
+  - nueva prueba de contrato para fijar este guard de arranque
+
+### Validacion prevista
+
+- `node --test --test-isolation=none frontend/tests/startupConfigContract.test.mjs frontend/tests/bootstrapCacheContract.test.mjs frontend/tests/landingAuthContract.test.mjs frontend/tests/authSessionContract.test.mjs frontend/tests/oxidianDsContract.test.mjs frontend/tests/publicBranchFlowContract.test.mjs`
+- `npm run build` en `frontend`
+
+### Nota operativa
+
+- Este cambio no sustituye revisar Vercel env vars; evita que una configuracion ausente se manifieste como pantalla blanca sin diagnostico.
+- Si tras publicar este corte sigue viendose blanca la home, el siguiente paso ya debe ser leer el error exacto del navegador o usar logs/screenshot del runtime.
+
 ## Iteracion 2026-04-23 - endurecimiento del bootstrap contra cache PWA legacy
 
 ### Causa raiz probable
