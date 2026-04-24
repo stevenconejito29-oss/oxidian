@@ -23,12 +23,12 @@ export default function StaffLoginPage() {
   const { storeSlug, branchSlug } = useParams()
   const navigate = useNavigate()
   const [branch, setBranch] = React.useState(null)
-  const [store,  setStore]  = React.useState(null)
+  const [store, setStore] = React.useState(null)
   const [username, setUsername] = React.useState('')
-  const [pin, setPin]           = React.useState('')
-  const [loading, setLoading]   = React.useState(true)
-  const [busy, setBusy]         = React.useState(false)
-  const [error, setError]       = React.useState('')
+  const [pin, setPin] = React.useState('')
+  const [loading, setLoading] = React.useState(true)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState('')
 
   React.useEffect(() => {
     let cancelled = false
@@ -78,24 +78,26 @@ export default function StaffLoginPage() {
         }),
       })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload?.error || payload?.message || 'No se pudo iniciar sesión.')
+      if (!response.ok) throw new Error(payload?.error || payload?.message || 'No se pudo iniciar sesiÃ³n.')
 
       const session = payload?.data?.session || payload?.session
+      const membership = session?.session_membership || {}
       const resolvedStore = payload?.data?.store || payload?.store || store
       const resolvedBranch = payload?.data?.branch || payload?.branch || branch
+      const resolvedRole = session?.role || membership.role
 
-      if (!session?.supabase_access_token || !session?.session_membership?.role) {
-        throw new Error('La sesión de staff llegó incompleta.')
+      if (!session?.supabase_access_token || !resolvedRole) {
+        throw new Error('La sesiÃ³n de staff llegÃ³ incompleta.')
       }
 
-      persistStoredSession(resolveStorageKey(session.role), session)
+      persistStoredSession(resolveStorageKey(resolvedRole), session)
       setStore(resolvedStore || null)
       setBranch(resolvedBranch || null)
 
-      const dest = ROLE_PATHS[session.role] || 'admin'
+      const dest = ROLE_PATHS[resolvedRole] || 'admin'
       const query = new URLSearchParams({
-        store_id: session.store_id || resolvedStore?.id || '',
-        branch_id: session.branch_id || resolvedBranch?.id || '',
+        store_id: session.store_id || membership.store_id || resolvedStore?.id || '',
+        branch_id: session.branch_id || membership.branch_id || resolvedBranch?.id || '',
       })
       navigate(`/branch/${dest}?${query.toString()}`, { replace: true })
     } catch (nextError) {
@@ -159,12 +161,12 @@ export default function StaffLoginPage() {
               color:'var(--color-text-primary)', fontFamily:'monospace', boxSizing:'border-box',
               outline:'none', letterSpacing:'0.3em', textAlign:'center' }}
               type="password" inputMode="numeric" maxLength={8} autoComplete="current-password"
-              value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" required />
+              value={pin} onChange={e => setPin(e.target.value)} placeholder="â€¢â€¢â€¢â€¢" required />
           </div>
           <button type="submit" disabled={busy} style={{ padding:'11px', borderRadius:8,
             border:'none', background: primary, color:'#fff',
             fontSize:14, fontWeight:500, cursor:busy ? 'wait' : 'pointer', fontFamily:'inherit', marginTop:4 }}>
-            {busy ? 'Entrando...' : 'Entrar a mi estación'}
+            {busy ? 'Entrando...' : 'Entrar a mi estaciÃ³n'}
           </button>
         </form>
 

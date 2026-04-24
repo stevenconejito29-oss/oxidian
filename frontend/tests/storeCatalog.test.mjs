@@ -20,7 +20,7 @@ test('restaurant payload keeps canonical business type and template', () => {
   assert.equal(payload.template_id, 'delivery')
 })
 
-test('barbershop payload does not invent unsupported booking template', () => {
+test('barbershop payload keeps booking template for service flows', () => {
   const payload = createStorePayload({
     name: 'Barber HQ',
     slug: 'barber-hq',
@@ -28,15 +28,14 @@ test('barbershop payload does not invent unsupported booking template', () => {
   })
 
   assert.equal(payload.business_type, 'beauty')
-  assert.notEqual(payload.template_id, 'booking')
-  assert.equal(payload.template_id, 'minimal')
+  assert.equal(payload.template_id, 'booking')
 })
 
-test('available menu styles only expose presets supported by storefront', () => {
+test('available menu styles only expose templates supported by the public menu router', () => {
   const styles = getAvailableMenuStyles().map((style) => style.id)
 
-  assert.deepEqual(styles, ['delivery', 'vitrina', 'portfolio', 'minimal', 'despensa'])
-  assert.equal(styles.includes('booking'), false)
+  assert.deepEqual(styles, ['delivery', 'vitrina', 'portfolio', 'minimal', 'booking', 'express'])
+  assert.equal(styles.includes('despensa'), false)
 })
 
 test('supported niches map to stable metadata', () => {
@@ -45,5 +44,5 @@ test('supported niches map to stable metadata', () => {
   assert.equal(niche.id, 'minimarket')
   assert.equal(niche.businessType, 'retail')
   assert.equal(niche.templateId, 'minimal')
-  assert.equal(niche.recommendedMenuStyleId, 'despensa')
+  assert.equal(niche.recommendedMenuStyleId, 'minimal')
 })

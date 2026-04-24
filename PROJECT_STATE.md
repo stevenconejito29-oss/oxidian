@@ -2,6 +2,7 @@
 
 ## Fecha
 
+- 2026-04-24
 - 2026-04-23
 - 2026-04-22
 - 2026-04-21
@@ -9,6 +10,70 @@
 - 2026-04-19
 - 2026-04-17
 - 2026-04-18
+
+## Iteracion 2026-04-24 - hardening de flujo funcional por scope, staff y gating
+
+### Hallazgos principales
+
+- El flujo funcional seguia teniendo huecos reales entre frontend, backend y SQL:
+  - `StaffLoginPage` dependia de `session.role` aunque el backend entrega el rol de forma fiable en `session_membership`
+  - cocina y riders no resolvian `branch_id` desde `useAuth()`, asi que un redirect sin query podia abrir scope demasiado amplio
+  - `DashboardLayout` seguia navegando a tabs legacy (`owners`, `affiliates`) y no tenia mapa correcto para roles de sede/tienda
+  - `BranchAdminPage` no aplicaba feature gating real a `marketing` y `chatbot`, y `staff_users` seguia cargando por `store_id` aunque hubiera `branch_id`
+  - `POST /api/backend/tenant/accounts/staff` aceptaba `store_id` / `branch_id` sin validar pertenencia al tenant activo
+  - `_get_token()` no aceptaba el `?token=` que ya genera el frontend para descargar el chatbot
+  - RLS publica de `coupons`, `categories` y `reviews` podia exponer datos de tiendas no activas o no visibles
+
+### Cambios aplicados
+
+- Frontend:
+  - `frontend/src/core/app/DashboardLayout.jsx`
+    - navegacion corregida por rol
+    - eliminados tabs legacy de sidebar
+    - soporte correcto para roles `store_admin`, `store_operator`, `branch_manager` y `cashier`
+  - `frontend/src/modules/auth/pages/StaffLoginPage.jsx`
+    - usa `session.session_membership` como fuente de verdad para rol y scope
+  - `frontend/src/modules/branch/pages/BranchKitchenPage.jsx`
+  - `frontend/src/modules/branch/pages/BranchRidersPage.jsx`
+    - resuelven `store_id` / `branch_id` por query param o `useAuth()`
+  - `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
+    - `FeatureGate` en tabs de marketing/chatbot
+    - `staff_users` filtrado por `branch_id` cuando aplica
+    - descarga chatbot usando helper canonico
+    - guard explicito si falta `branch_id` al guardar config
+  - `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
+    - `LimitGate` para tiendas, sedes y staff
+    - `FeatureGate` para personalizacion
+    - lectura de `location.state` para preseleccionar alta de manager por sede
+  - `frontend/src/modules/tenant/lib/storeCatalog.js`
+    - alineado con los templates reales soportados por el router publico
+
+- Backend:
+  - `api/index.py`
+    - `_get_token()` acepta header `Authorization` o query `token`
+    - `create_staff_account()` valida coherencia `tenant -> store -> branch`
+    - rollback defensivo del auth user si falla la membresia recien creada
+
+- SQL:
+  - `supabase/migrations/0007_fix_security_and_missing_tables.sql`
+    - `branch_manager` deja de colarse por shortcut store-scoped
+  - `supabase/migrations/0014_orders_and_staff_rls.sql`
+    - politicas publicas de `coupons`, `categories` y `reviews` ahora exigen store activa y visible
+    - insercion publica de reviews deja de usar `WITH CHECK (true)`
+  - `database_schema.sql`
+    - indice actualizado para mencionar `0015_orders_tracking_columns.sql`
+
+### Verificacion ejecutada
+
+- `npm run build` en `frontend` -> OK
+- `backend\\.venv\\Scripts\\python.exe -m unittest test_schema_contract.py test_public_backend_contract.py test_frontend_tenant_mutations_contract.py -v` -> OK (15 tests)
+- `node --test --test-isolation=none frontend/tests/*.test.mjs` -> OK (29 tests)
+
+### Riesgos pendientes a revisar tras verificacion
+
+- consolidar CORS y otros endpoints legacy en `api/index.py`
+- decidir si `storeCatalog.js` debe ser la fuente canonica o si conviene eliminarlo si queda solo para contratos
+- revisar endurecimiento adicional del login staff publico contra brute force
 
 ## Iteracion 2026-04-23 - fix SQL para landing_requests desde backend service_role
 

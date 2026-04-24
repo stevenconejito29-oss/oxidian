@@ -3,7 +3,7 @@
  * Retorna: { modules, isEnabled(id), getConfig(id), loading, error, refresh }
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase } from '../supabase/client'
+import { supabaseAuth as supabase } from '../supabase/client'
 import { useAuth } from '../../core/providers/AuthProvider'
 
 const CACHE = {}

@@ -81,12 +81,13 @@ export default function CheckoutDrawer({
           delivery_fee: Number(deliveryFee || 0),
           items: cart.map(item => ({
             id: item.id || null,
+            line_id: item.line_id || null,
             product_name: item.product_name || item.name || '',
             qty: Math.max(1, Number(item.qty || 1)),
             price: Number(item.price || 0),
             image_url: item.image_url || null,
             emoji: item.emoji || '',
-            variants: item.variants || [],
+            variants: item.variants || (item.selectedVariant ? [item.selectedVariant] : []),
             modifiers: item.modifiers || [],
             notes: item.notes || null,
           })),
@@ -142,16 +143,16 @@ export default function CheckoutDrawer({
 
             <div className={styles.cartPreview}>
               {cart.map((item, index) => (
-                <div className={styles.cartLine} key={`${item.id}-${index}`}>
+                <div className={styles.cartLine} key={item.line_id || `${item.id}-${index}`}>
                   <div className={styles.cartLineInfo}>
                     <span>{item.product_name || item.name}</span>
                     <small>{money(item.price, currency)} c/u</small>
                   </div>
                   <div className={styles.cartLineActions}>
-                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.id, item.qty - 1)}>-</button>
+                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.line_id, item.qty - 1)}>-</button>
                     <strong>{item.qty}</strong>
-                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.id, item.qty + 1)}>+</button>
-                    <button type="button" className={styles.removeButton} onClick={() => onRemoveItem?.(item.id)}>Quitar</button>
+                    <button type="button" className={styles.qtyButton} onClick={() => onUpdateQty?.(item.line_id, item.qty + 1)}>+</button>
+                    <button type="button" className={styles.removeButton} onClick={() => onRemoveItem?.(item.line_id)}>Quitar</button>
                   </div>
                 </div>
               ))}

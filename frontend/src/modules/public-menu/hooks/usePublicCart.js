@@ -7,10 +7,84 @@ import React from 'react'
 const KEY = 'oxidian_public_cart'
 
 function load() {
-  try { return JSON.parse(sessionStorage.getItem(KEY) || '[]') } catch { return [] }
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(KEY) || '[]')
+    return Array.isArray(raw) ? raw.map(normalizeStoredItem) : []
+  } catch {
+    return []
+  }
 }
 function save(items) {
   try { sessionStorage.setItem(KEY, JSON.stringify(items)) } catch {}
+}
+
+function stableSignature(value) {
+  return JSON.stringify(value || null)
+}
+
+function resolveVariants(prod) {
+  if (Array.isArray(prod?.variants) && prod.variants.length > 0) return prod.variants
+  if (prod?.selectedVariant) return [prod.selectedVariant]
+  return []
+}
+
+function resolveModifiers(prod) {
+  return Array.isArray(prod?.modifiers) ? prod.modifiers : []
+}
+
+function resolveLineId(prod) {
+  const signature = {
+    id: prod?.id || null,
+    name: prod?.product_name || prod?.name || '',
+    variants: resolveVariants(prod).map(v => v?.id || v?.label || v?.name || v),
+    modifiers: resolveModifiers(prod).map(m => m?.id || m?.label || m?.name || m),
+    notes: prod?.notes || null,
+  }
+  return prod?.line_id || `line:${stableSignature(signature)}`
+}
+
+function computeUnitPrice(prod) {
+  const basePrice = Number(prod?.base_price ?? prod?.price ?? 0)
+  const variantDelta = resolveVariants(prod).reduce(
+    (sum, variant) => sum + Number(variant?.price_modifier ?? variant?.priceModifier ?? 0),
+    0,
+  )
+  const modifiersDelta = resolveModifiers(prod).reduce(
+    (sum, modifier) => sum + Number(modifier?.price ?? modifier?.price_modifier ?? modifier?.priceModifier ?? 0),
+    0,
+  )
+  return Number((basePrice + variantDelta + modifiersDelta).toFixed(2))
+}
+
+function normalizeStoredItem(item) {
+  if (!item || typeof item !== 'object') return item
+  const variants = resolveVariants(item)
+  const modifiers = resolveModifiers(item)
+  const price = item.price != null ? Number(item.price) : computeUnitPrice(item)
+  return {
+    ...item,
+    line_id: resolveLineId(item),
+    base_price: Number(item.base_price ?? item.price ?? 0),
+    price,
+    variants,
+    modifiers,
+    qty: Math.max(1, Number(item.qty || 1)),
+  }
+}
+
+function normalizeLineItem(prod) {
+  const variants = resolveVariants(prod)
+  const modifiers = resolveModifiers(prod)
+  const price = computeUnitPrice({ ...prod, variants, modifiers })
+  return {
+    ...prod,
+    line_id: resolveLineId({ ...prod, variants, modifiers }),
+    base_price: Number(prod?.base_price ?? prod?.price ?? 0),
+    price,
+    variants,
+    modifiers,
+    qty: Math.max(1, Number(prod?.qty || 1)),
+  }
 }
 
 export function usePublicCart(storeId) {
@@ -21,22 +95,31 @@ export function usePublicCart(storeId) {
 
   function addToCart(prod) {
     setItems(prev => {
-      const idx = prev.findIndex(i => i.id === prod.id)
+      const line = normalizeLineItem(prod)
+      const idx = prev.findIndex(i => i.line_id === line.line_id)
       const next = idx >= 0
-        ? prev.map((i, n) => n === idx ? { ...i, qty: i.qty + 1 } : i)
-        : [...prev, { ...prod, qty: 1 }]
+        ? prev.map((i, n) => n === idx ? { ...i, qty: i.qty + line.qty } : i)
+        : [...prev, line]
       save(next)
       return next
     })
   }
 
-  function updateQty(id, qty) {
-    if (qty <= 0) return removeItem(id)
-    setItems(prev => { const n = prev.map(i => i.id === id ? { ...i, qty } : i); save(n); return n })
+  function updateQty(lineId, qty) {
+    if (qty <= 0) return removeItem(lineId)
+    setItems(prev => {
+      const next = prev.map(item => item.line_id === lineId ? { ...item, qty } : item)
+      save(next)
+      return next
+    })
   }
 
-  function removeItem(id) {
-    setItems(prev => { const n = prev.filter(i => i.id !== id); save(n); return n })
+  function removeItem(lineId) {
+    setItems(prev => {
+      const next = prev.filter(item => item.line_id !== lineId)
+      save(next)
+      return next
+    })
   }
 
   function clearCart() { setItems([]); save([]) }

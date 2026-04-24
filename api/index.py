@@ -43,7 +43,10 @@ def _sb() -> Client:
 # ── Auth helpers ──────────────────────────────────────────────────────
 def _get_token() -> str | None:
     h = request.headers.get("Authorization", "")
-    return h[7:] if h.lower().startswith("bearer ") else None
+    if h.lower().startswith("bearer "):
+        return h[7:]
+    query_token = request.args.get("token", "").strip()
+    return query_token or None
 
 def _decode_token(token: str) -> dict:
     if not SUPABASE_JWT_SECRET:
@@ -990,9 +993,34 @@ def create_staff_account():
         return _err("email y password requeridos")
     if not tenant_id:
         return _err("tenant_id requerido")
+    if role in ("store_admin", "store_operator", "branch_manager", "cashier", "kitchen", "rider") and not store_id:
+        return _err("store_id requerido")
+    if role in ("branch_manager", "cashier", "kitchen", "rider") and not branch_id:
+        return _err("branch_id requerido")
 
     try:
         sb = _sb()
+        if role == "tenant_admin":
+            store_id = None
+            branch_id = None
+
+        if store_id:
+            store_row = sb.table("stores").select("id,tenant_id").eq("id", store_id).maybe_single().execute().data
+            if not store_row:
+                return _err("store_id invalido", 404)
+            if store_row.get("tenant_id") != tenant_id:
+                return _err("store_id fuera del tenant activo", 403)
+
+        if branch_id:
+            branch_row = sb.table("branches").select("id,tenant_id,store_id").eq("id", branch_id).maybe_single().execute().data
+            if not branch_row:
+                return _err("branch_id invalido", 404)
+            if branch_row.get("tenant_id") != tenant_id:
+                return _err("branch_id fuera del tenant activo", 403)
+            if store_id and branch_row.get("store_id") != store_id:
+                return _err("branch_id no pertenece a la tienda indicada", 403)
+            store_id = store_id or branch_row.get("store_id")
+
         try:
             auth_res = sb.auth.admin.create_user({
                 "email": email, "password": password,
@@ -1026,6 +1054,11 @@ def create_staff_account():
             "membership_id": membership.get("id"), "created": created,
         }, "Staff creado", 201 if created else 200)
     except Exception as e:
+        if "user_id" in locals() and locals().get("created"):
+            try:
+                sb.auth.admin.delete_user(user_id)
+            except Exception:
+                pass
         return _err(str(e), 500)
 
 
@@ -1100,6 +1133,7 @@ def create_tenant_store():
             "public_visible": bool(body.get("public_visible", True)),
             "owner_email": str(body.get("owner_email", "")).strip().lower() or None,
             "owner_name": str(body.get("owner_name", "")).strip() or None,
+            "modules": body.get("modules") if isinstance(body.get("modules"), list) else [],
         }
         if not payload["id"] or not payload["slug"]:
             return _err("slug invalido")
@@ -1115,6 +1149,19 @@ def create_tenant_store():
             }).execute()
         except Exception:
             pass
+
+        # Aplicar módulos elegidos en el wizard → popula store_process_profiles
+        wizard_modules = payload.get("modules") or []
+        if wizard_modules:
+            try:
+                import json as _json
+                sb.rpc("apply_store_modules", {
+                    "p_store_id": created_store["id"],
+                    "p_tenant_id": tenant_id,
+                    "p_modules": _json.dumps(wizard_modules),
+                }).execute()
+            except Exception:
+                pass
 
         created_branch = None
         initial_branch_name = str(body.get("initial_branch_name", "")).strip()

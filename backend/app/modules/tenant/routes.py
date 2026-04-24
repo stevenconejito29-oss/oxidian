@@ -174,6 +174,7 @@ def create_tenant_store():
 
     created_store = inserted[0] if inserted else payload
 
+    # Aplicar preset de nicho (catalog_mode, order_flow_type, etc.)
     try:
         sb.rpc("apply_niche_preset", {
             "p_store_id": created_store["id"],
@@ -182,6 +183,19 @@ def create_tenant_store():
         }).execute()
     except Exception:
         pass
+
+    # Aplicar módulos seleccionados por el dueño (sobreescribe lo del preset)
+    modules_raw = body.get("modules")
+    if modules_raw and isinstance(modules_raw, list) and len(modules_raw) > 0:
+        try:
+            import json
+            sb.rpc("apply_store_modules", {
+                "p_store_id":  created_store["id"],
+                "p_tenant_id": tenant_id,
+                "p_modules":   json.dumps(modules_raw),
+            }).execute()
+        except Exception:
+            pass  # No abortar la creación si falla el perfil de módulos
 
     initial_branch_name = _clean_text(body.get("initial_branch_name"))
     initial_branch_slug = _clean_text(body.get("initial_branch_slug")).lower()
@@ -449,7 +463,7 @@ def create_cash_entry():
         "type": body.get("type", "income"),
         "amount": float(body.get("amount", 0)),
         "concept": body.get("concept", "Entrada manual"),
-        "note": body.get("note", ""),
+        "notes": body.get("notes", ""),
     }
     res = sb.table("cash_entries").insert(payload).execute()
     return jsonify(res.data[0] if res.data else {}), 201

@@ -50,7 +50,7 @@ AS $$
         OR (
           target_store_id IS NOT NULL
           AND public.current_request_store_id() = target_store_id
-          AND public.current_request_app_role() IN ('store_admin', 'store_operator', 'branch_manager')
+          AND public.current_request_app_role() IN ('store_admin', 'store_operator')
         )
         OR (
           target_branch_id IS NOT NULL

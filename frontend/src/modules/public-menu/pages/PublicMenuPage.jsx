@@ -12,6 +12,7 @@ import { MenuStyleGrid }         from '../styles/MenuStyleGrid'
 import { MenuStyleBoutique }     from '../styles/MenuStyleBoutique'
 import { MenuStyleCatalog }      from '../styles/MenuStyleCatalog'
 import { MenuStyleBooking }      from '../styles/MenuStyleBooking'
+import { MenuStyleExpress }      from '../styles/MenuStyleExpress'
 import CartDrawer                from '../components/CheckoutDrawer'
 
 // Mapa template → componente
@@ -21,13 +22,14 @@ const STYLE_MAP = {
   portfolio:          MenuStyleBoutique,
   minimal:            MenuStyleCatalog,
   booking:            MenuStyleBooking,
+  express:            MenuStyleExpress,
   // fallbacks por niche
   restaurant:         MenuStyleDelivery,
   fastfood:           MenuStyleDelivery,
   food:               MenuStyleDelivery,
   supermarket:        MenuStyleGrid,
   minimarket:         MenuStyleGrid,
-  neighborhood_store: MenuStyleCatalog,
+  neighborhood_store: MenuStyleExpress,
   boutique_fashion:   MenuStyleBoutique,
   clothing:           MenuStyleBoutique,
   pharmacy:           MenuStyleCatalog,

@@ -70,7 +70,16 @@ export function readCurrentSupabaseAccessToken(fallbackToken = '') {
   if (typeof window === 'undefined') return fallbackToken
   const key = resolveRouteKey(window.location.pathname)
   const session = loadStoredSession(key)
-  return session?.supabase_access_token || fallbackToken
+  if (session?.supabase_access_token) return session.supabase_access_token
+
+  // Fallback: si el key de ruta no tiene sesión (ej: owner visitando /branch/kitchen),
+  // intentar con el key admin antes de devolver el token anónimo
+  if (key !== STORAGE_KEYS.admin) {
+    const adminSession = loadStoredSession(STORAGE_KEYS.admin)
+    if (adminSession?.supabase_access_token) return adminSession.supabase_access_token
+  }
+
+  return fallbackToken
 }
 
 export function hasCurrentRouteSession() {

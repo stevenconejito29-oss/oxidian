@@ -1,24 +1,30 @@
 -- ============================================================
 -- OXIDIAN / CARMOCREAM
 -- Canonical database schema index
--- Fecha de consolidacion: 2026-04-22
+-- Fecha de consolidacion: 2026-04-24
 -- ============================================================
 --
 -- Este archivo funciona como punto canonico de referencia del esquema
 -- actual mientras la ejecucion operativa sigue dividida en migraciones.
 --
--- Fuente vigente observada en este workspace:
---   1. supabase/migrations/0001_hierarchy_foundation.sql
---   2. supabase/migrations/0002_chatbot_authorization.sql
---   3. supabase/migrations/0003_jwt_claims_hook.sql
---   4. supabase/migrations/0004_fix_42803.sql
---   5. supabase/migrations/0004_patch_functions.sql
---   6. supabase/migrations/0005_testing_readiness.sql
---   7. supabase/migrations/0006_fix_rls_auth_errors.sql
---   8. supabase/migrations/0007_fix_security_and_missing_tables.sql
---   9. supabase/migrations/0008_plans_and_feature_overrides.sql
---  10. supabase/migrations/0009_fix_tenants_rls_tenant_owner.sql
---  11. supabase/migrations/0011_fix_landing_requests_service_role_grants.sql  ← NUEVO
+-- Migraciones activas:
+--   0001_hierarchy_foundation.sql
+--   0002_chatbot_authorization.sql
+--   0003_jwt_claims_hook.sql
+--   0004_fix_42803.sql
+--   0004_patch_functions.sql
+--   0005_testing_readiness.sql
+--   0006_fix_rls_auth_errors.sql
+--   0007_fix_security_and_missing_tables.sql
+--   0008_plans_and_feature_overrides.sql
+--   0009_fix_tenants_rls_tenant_owner.sql
+--   0010_backfill_tenant_subscriptions.sql
+--   0011_fix_landing_requests_service_role_grants.sql
+--   0012_store_modules_column.sql
+--   0015_orders_tracking_columns.sql
+--   0013_add_missing_templates_and_fixes.sql   ← Templates booking/express
+--   0014_orders_and_staff_rls.sql             ← RLS completo staff/orders
+--   0016_branch_operations_support.sql        ← Combos, caja y columnas operativas faltantes
 --
 -- Regla de trabajo:
 --   - cualquier nueva funcionalidad con datos debe reflejarse aqui primero
@@ -31,6 +37,8 @@
 --   - stores.id sigue siendo texto tipo slug en este workspace
 --   - existe public.categories como catalogo base por store y products.category_id
 --   - orders.branch_id existe y order_number ya es entero
+--   - combos, cash_entries y daily_sales_summary deben existir fuera de RESET_COMPLETE
+--   - coupons necesita max_uses y ventana de validez para promociones reales
 --   - tenant_subscriptions incluye feature_overrides, notes, plan_id starter y status
 --   - el proyecto remoto de Supabase no parece tener activadas todas las
 --     policies/grants esperadas, aunque las migraciones locales si las definen

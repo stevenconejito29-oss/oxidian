@@ -1,5 +1,5 @@
 import React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../core/providers/AuthProvider'
 import DashboardLayout from '../../../core/app/DashboardLayout'
 import AdminStoreCustomizationPanel from '../../../legacy/pages/AdminStoreCustomizationPanel'
@@ -120,7 +120,19 @@ const NICHES = [
   },
 ]
 
-// ─── 5 Estilos de menú ────────────────────────────────────────────
+// Mapeo niche → business_type real (para backend y get_store_modules)
+const NICHE_BUSINESS_TYPE = {
+  restaurant:          'food',
+  supermarket:         'retail',
+  boutique_fashion:    'retail',
+  pharmacy:            'retail',
+  neighborhood_store:  'retail',
+  barbershop:          'beauty',
+  beauty_salon:        'beauty',
+  nail_salon:          'beauty',
+  services:            'services',
+  universal:           'other',
+}
 const MENU_STYLES = [
   {
     id:'delivery', label:'Tarjetas Delivery', icon:'🍔', desc:'Tarjetas con imagen, precio y botón de añadir. Ideal para restaurantes y delivery rápido.',
@@ -142,6 +154,24 @@ const MENU_STYLES = [
     id:'booking', label:'Citas y Reservas', icon:'📅', desc:'Servicios con duración, precio y botón de reserva. Barberías, salones y servicios.',
     preview:'booking', niches:['barbershop','beauty_salon','nail_salon','services'],
   },
+  {
+    id:'express', label:'Carta Express QR', icon:'⚡', desc:'Vista ultracompacta para escanear en mesa. Precio visible sin imágenes para decisiones rápidas.',
+    preview:'compact', niches:['neighborhood_store','barbershop','services','universal','restaurant'],
+  },
+]
+
+// ─── Módulos disponibles por plan ────────────────────────────────
+const MODULES = [
+  { id:'delivery',   icon:'🛵', label:'Pedidos & Delivery',     desc:'Recibe pedidos online, a domicilio o para recoger',             default:true },
+  { id:'kitchen',    icon:'👨‍🍳', label:'Panel de Cocina',         desc:'Vista en tiempo real de pedidos para el equipo de cocina',     default:true },
+  { id:'inventory',  icon:'📦', label:'Inventario & Stock',       desc:'Control de stock, alertas de mínimos y entradas de mercancía', default:false },
+  { id:'bookings',   icon:'📅', label:'Citas & Reservas',         desc:'Agenda online, servicios por duración y gestión de personal',  default:false },
+  { id:'riders',     icon:'🚴', label:'Panel de Repartidores',    desc:'App para repartidores: estado de entregas y rutas en tiempo real', default:false },
+  { id:'cashier',    icon:'💳', label:'Caja & POS',               desc:'Cobros en mostrador, efectivo, tarjeta e historial de caja',   default:false },
+  { id:'chatbot',    icon:'🤖', label:'Chatbot WhatsApp',          desc:'Bot automático para recibir pedidos y consultas por WhatsApp', default:false },
+  { id:'loyalty',    icon:'⭐', label:'Fidelización',              desc:'Puntos, recompensas y programa de clientes VIP',              default:false },
+  { id:'affiliates', icon:'🤝', label:'Red de Afiliados',          desc:'Revendedores con links personalizados y comisión automática',  default:false },
+  { id:'reviews',    icon:'💬', label:'Reseñas',                   desc:'Sistema de valoraciones públicas de clientes verificados',     default:false },
 ]
 
 const STAFF_ROLES = [
@@ -167,6 +197,7 @@ const TABS = [
 // ══════════════════════════════════════════════════════════════════
 export default function TenantAdminPage() {
   const navigate   = useNavigate()
+  const location   = useLocation()
   const { tenantId, role } = useAuth()
   const [tab,             setTab]             = React.useState('overview')
   const [loading,         setLoading]         = React.useState(true)
@@ -177,6 +208,8 @@ export default function TenantAdminPage() {
   const [accounts,        setAccounts]        = React.useState([])
   const [planId,          setPlanId]          = React.useState('growth')
   const [selectedStoreId, setSelectedStoreId] = React.useState('')
+  const preselectedBranchId = location.state?.branch_id || ''
+  const preselectedRole = location.state?.role || 'store_admin'
 
   const selectedStore  = stores.find(s => s.id===selectedStoreId) || stores[0] || null
   const storeBranches  = branches.filter(b => b.store_id===selectedStore?.id)
@@ -204,7 +237,10 @@ export default function TenantAdminPage() {
 
   React.useEffect(() => { load() }, [load])
 
-  const { can, canCreateMore, plan, FEATURES: F } = usePlan()
+  React.useEffect(() => {
+    if (location.state?.tab) setTab(location.state.tab)
+    if (location.state?.store_id) setSelectedStoreId(location.state.store_id)
+  }, [location.state])
 
   if (!tenantId) return (
     <div style={{ padding:24 }}>
@@ -249,8 +285,12 @@ export default function TenantAdminPage() {
       {!loading && tab==='overview'  && <OverviewTab stores={stores} branches={branches} accounts={accounts} dashboard={dashboard} onTabChange={setTab} setSelectedStoreId={setSelectedStoreId} />}
       {!loading && tab==='stores'    && <StoresTab tenantId={tenantId} stores={stores} onRefresh={load} setSelectedStoreId={setSelectedStoreId} setTab={setTab} />}
       {!loading && tab==='branches'  && <BranchesTab tenantId={tenantId} stores={stores} branches={branches} selectedStore={selectedStore} setSelectedStoreId={setSelectedStoreId} storeBranches={storeBranches} onRefresh={load} navigate={navigate} />}
-      {!loading && tab==='staff'     && <StaffTab tenantId={tenantId} stores={stores} branches={branches} accounts={accounts} onRefresh={load} />}
-      {!loading && tab==='customize' && <CustomizeTab stores={stores} selectedStore={selectedStore} setSelectedStoreId={setSelectedStoreId} onRefresh={load} />}
+      {!loading && tab==='staff'     && <StaffTab tenantId={tenantId} stores={stores} branches={branches} accounts={accounts} onRefresh={load} selectedStoreId={selectedStoreId} preselectedBranchId={preselectedBranchId} preselectedRole={preselectedRole} />}
+      {!loading && tab==='customize' && (
+        <FeatureGate feature={FEATURES.MENU_CUSTOM_STYLE}>
+          <CustomizeTab stores={stores} selectedStore={selectedStore} setSelectedStoreId={setSelectedStoreId} onRefresh={load} />
+        </FeatureGate>
+      )}
     </DashboardLayout>
   )
 }
@@ -325,8 +365,9 @@ function OverviewTab({ stores, branches, accounts, dashboard, onTabChange, setSe
 
 // ── CREAR TIENDA — Wizard con selector de nicho ────────────────────
 function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) {
-  const [step,    setStep]    = React.useState(1) // 1=nicho, 2=estilo, 3=datos
+  const [step,    setStep]    = React.useState(1) // 1=nicho, 2=módulos, 3=estilo, 4=datos
   const [nicho,   setNicho]   = React.useState(null)
+  const [mods,    setMods]    = React.useState(() => MODULES.filter(m => m.default).map(m => m.id))
   const [estilo,  setEstilo]  = React.useState(null)
   const [form,    setForm]    = React.useState({ name:'', slug:'', city:'', initial_branch_name:'Sede principal', initial_branch_slug:'principal', initial_branch_city:'', initial_branch_address:'' })
   const [saving,  setSaving]  = React.useState(false)
@@ -345,8 +386,10 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
       const store = await createStore({
         id: form.slug, slug: form.slug, name: form.name,
         tenant_id: tenantId, niche: nicho.id,
-        business_type: nicho.templateId, template_id: estilo.id,
+        business_type: NICHE_BUSINESS_TYPE[nicho.id] || 'other',
+        template_id: estilo.id,
         city: form.city, status:'active', public_visible:true, theme_tokens:{},
+        modules: mods,
         initial_branch_name: form.initial_branch_name,
         initial_branch_slug: form.initial_branch_slug||'principal',
         initial_branch_address: form.initial_branch_address,
@@ -371,7 +414,9 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
             Cada tienda tiene su propio menú, sedes y staff
           </p>
         </div>
-        <Btn onClick={() => setShowCreate(s => !s)}>{showCreate ? 'Cancelar' : '+ Crear tienda'}</Btn>
+        <LimitGate limitKey={FEATURES.MAX_STORES} currentCount={stores.length}>
+          <Btn onClick={() => setShowCreate(s => !s)}>{showCreate ? 'Cancelar' : '+ Crear tienda'}</Btn>
+        </LimitGate>
       </div>
 
       {/* ── WIZARD ──────────────────────────────────────────────── */}
@@ -379,7 +424,7 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
         <div style={{ background:'var(--color-background-primary)', border:'1px solid var(--color-border-tertiary)', borderRadius:14, overflow:'hidden' }}>
           {/* Stepper */}
           <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--color-border-tertiary)', display:'flex', gap:8, alignItems:'center' }}>
-            {[['1','Elige nicho'],['2','Elige estilo'],['3','Configura']].map(([n,l]) => (
+            {[['1','Elige nicho'],['2','Módulos'],['3','Elige estilo'],['4','Configura']].map(([n,l]) => (
               <React.Fragment key={n}>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <div style={{
@@ -391,7 +436,7 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
                   }}>{n}</div>
                   <span style={{ fontSize:13, fontWeight:Number(n)===step?600:400, color:Number(n)===step?'var(--color-text-primary)':'var(--color-text-secondary)' }}>{l}</span>
                 </div>
-                {n!=='3' && <div style={{ flex:1, height:1, background:'var(--color-border-tertiary)', maxWidth:40 }} />}
+                {n!=='4' && <div style={{ flex:1, height:1, background:'var(--color-border-tertiary)', maxWidth:30 }} />}
               </React.Fragment>
             ))}
           </div>
@@ -407,7 +452,25 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
                 </p>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:10 }}>
                   {NICHES.map(n => (
-                    <button key={n.id} type="button" onClick={() => { setNicho(n); setEstilo(MENU_STYLES.find(m=>m.niches.includes(n.id))||MENU_STYLES[0]); setStep(2) }} style={{
+                    <button key={n.id} type="button" onClick={() => {
+                      setNicho(n)
+                      // Pre-seleccionar módulos según nicho
+                      const nichoMods = {
+                        restaurant: ['delivery','kitchen','riders'],
+                        supermarket: ['delivery','inventory','cashier'],
+                        boutique_fashion: ['delivery','inventory'],
+                        pharmacy: ['delivery','inventory','cashier'],
+                        neighborhood_store: ['delivery','cashier'],
+                        barbershop: ['bookings','loyalty'],
+                        beauty_salon: ['bookings','loyalty','reviews'],
+                        nail_salon: ['bookings','loyalty'],
+                        services: ['bookings','cashier'],
+                        universal: ['delivery','kitchen'],
+                      }
+                      setMods(nichoMods[n.id] || ['delivery','kitchen'])
+                      setEstilo(MENU_STYLES.find(m => m.niches.includes(n.id)) || MENU_STYLES[0])
+                      setStep(2)
+                    }} style={{
                       padding:'14px 12px', borderRadius:12, textAlign:'left', cursor:'pointer', fontFamily:'inherit',
                       border: nicho?.id===n.id ? `2px solid ${n.color}` : '1px solid var(--color-border-secondary)',
                       background: nicho?.id===n.id ? `${n.color}10` : 'var(--color-background-secondary)',
@@ -424,18 +487,72 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
               </div>
             )}
 
-            {/* PASO 2: Elige estilo de menú */}
+            {/* PASO 2: Selecciona módulos */}
             {step===2 && (
               <div>
                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
                   <button onClick={() => setStep(1)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--color-text-secondary)', fontSize:20 }}>←</button>
+                  <div>
+                    <p style={{ margin:0, fontSize:13, fontWeight:600 }}>¿Qué funciones necesitas?</p>
+                    <p style={{ margin:'2px 0 0', fontSize:12, color:'var(--color-text-secondary)' }}>Puedes activar o desactivar módulos después. Preseleccionados según tu nicho.</p>
+                  </div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))', gap:10, marginBottom:20 }}>
+                  {MODULES.map(m => {
+                    const active = mods.includes(m.id)
+                    return (
+                      <button key={m.id} type="button" onClick={() => setMods(prev =>
+                        prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id]
+                      )} style={{
+                        display:'flex', gap:12, padding:'12px 14px', borderRadius:12, textAlign:'left',
+                        cursor:'pointer', fontFamily:'inherit', alignItems:'flex-start',
+                        border: active ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border-secondary)',
+                        background: active ? 'var(--color-background-secondary)' : 'transparent',
+                        transition:'.12s',
+                      }}>
+                        <div style={{
+                          width:36, height:36, borderRadius:9, flexShrink:0,
+                          background: active ? 'var(--color-text-primary)' : 'var(--color-border-secondary)',
+                          color: active ? 'var(--color-background-primary)' : 'var(--color-text-secondary)',
+                          display:'flex', alignItems:'center', justifyContent:'center', fontSize:18,
+                        }}>{m.icon}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600, marginBottom:2 }}>{m.label}</div>
+                          <div style={{ fontSize:11, color:'var(--color-text-secondary)', lineHeight:1.4 }}>{m.desc}</div>
+                        </div>
+                        <div style={{ flexShrink:0, marginTop:4 }}>
+                          <div style={{
+                            width:16, height:16, borderRadius:4, border:'2px solid',
+                            borderColor: active ? 'var(--color-text-primary)' : 'var(--color-border-secondary)',
+                            background: active ? 'var(--color-text-primary)' : 'transparent',
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                          }}>
+                            {active && <span style={{ color:'var(--color-background-primary)', fontSize:10, fontWeight:700 }}>✓</span>}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <Btn onClick={() => setStep(3)} disabled={mods.length === 0}>Continuar con {mods.length} módulo(s) →</Btn>
+                  <Btn variant="ghost" onClick={() => { setMods(MODULES.filter(m=>m.default).map(m=>m.id)); setStep(3) }}>Usar configuración por defecto</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* PASO 3: Elige estilo de menú */}
+            {step===3 && (
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                  <button onClick={() => setStep(2)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--color-text-secondary)', fontSize:20 }}>←</button>
                   <div>
                     <p style={{ margin:0, fontSize:13, color:'var(--color-text-secondary)' }}>
                       Elige cómo verán el menú tus clientes. Puedes cambiarlo después.
                     </p>
                     {nicho && (
                       <div style={{ fontSize:12, marginTop:4 }}>
-                        Nicho seleccionado: <strong>{nicho.icon} {nicho.label}</strong>
+                        Nicho: <strong>{nicho.icon} {nicho.label}</strong> · Módulos: <strong>{mods.length}</strong>
                       </div>
                     )}
                   </div>
@@ -445,7 +562,7 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
                     const isRec = nicho && s.niches.includes(nicho.id)
                     const isSel = estilo?.id===s.id
                     return (
-                      <button key={s.id} type="button" onClick={() => { setEstilo(s); setStep(3) }} style={{
+                      <button key={s.id} type="button" onClick={() => { setEstilo(s); setStep(4) }} style={{
                         padding:'16px', borderRadius:12, textAlign:'left', cursor:'pointer', fontFamily:'inherit',
                         border: isSel ? '2px solid var(--color-text-primary)' : '1px solid var(--color-border-secondary)',
                         background: isSel ? 'var(--color-background-secondary)' : 'transparent',
@@ -462,13 +579,14 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
               </div>
             )}
 
-            {/* PASO 3: Datos de la tienda */}
-            {step===3 && (
+            {/* PASO 4: Datos de la tienda */}
+            {step===4 && (
               <form onSubmit={handleCreate}>
                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-                  <button type="button" onClick={() => setStep(2)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--color-text-secondary)', fontSize:20 }}>←</button>
+                  <button type="button" onClick={() => setStep(3)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--color-text-secondary)', fontSize:20 }}>←</button>
                   <div style={{ fontSize:13, color:'var(--color-text-secondary)' }}>
                     {nicho && <span>{nicho.icon} {nicho.label}</span>}
+                    {mods.length>0 && <span> · {mods.length} módulos</span>}
                     {estilo && <span> · {estilo.icon} {estilo.label}</span>}
                   </div>
                 </div>
@@ -507,7 +625,7 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
                   <Btn type="submit" disabled={saving}>{saving ? 'Creando…' : '✓ Crear tienda'}</Btn>
-                  <Btn variant="ghost" type="button" onClick={() => { setShowCreate(false); setStep(1); setNicho(null); setEstilo(null) }}>Cancelar</Btn>
+                  <Btn variant="ghost" type="button" onClick={() => { setShowCreate(false); setStep(1); setNicho(null); setEstilo(null); setMods(MODULES.filter(m=>m.default).map(m=>m.id)) }}>Cancelar</Btn>
                 </div>
               </form>
             )}
@@ -527,6 +645,7 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
         {stores.map(s => {
           const niche = NICHES.find(n=>n.id===s.niche) || NICHES[NICHES.length-1]
           const style = MENU_STYLES.find(m=>m.id===s.template_id) || MENU_STYLES[0]
+          const storeMods = Array.isArray(s.modules) ? s.modules : []
           return (
             <div key={s.id} style={{
               background:'var(--color-background-primary)',
@@ -552,12 +671,25 @@ function StoresTab({ tenantId, stores, onRefresh, setSelectedStoreId, setTab }) 
                   <Badge color={niche.color}>{niche.label}</Badge>
                   <Badge color="#6366f1">{style.icon} {style.label}</Badge>
                 </div>
+                {storeMods.length > 0 && (
+                  <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                    {storeMods.map(modId => {
+                      const mod = MODULES.find(m=>m.id===modId)
+                      return mod ? (
+                        <span key={modId} style={{ fontSize:10, padding:'2px 7px', borderRadius:10, background:'var(--color-background-secondary)', color:'var(--color-text-secondary)', border:'1px solid var(--color-border-tertiary)' }}>
+                          {mod.icon} {mod.label}
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                )}
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                   <Btn size="sm" variant="ghost" onClick={() => window.open(`/s/${s.slug}/menu`,'_blank')}>Ver menú ↗</Btn>
                   <Btn size="sm" onClick={() => { setSelectedStoreId(s.id); setTab('customize') }}>🎨 Diseñar</Btn>
                   <Btn size="sm" variant="ghost" onClick={() => updateStore(s.id, { public_visible:!s.public_visible }).then(onRefresh)}>
                     {s.public_visible?'Ocultar':'Publicar'}
                   </Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => { setSelectedStoreId(s.id); setTab('staff') }}>Asignar admin</Btn>
                 </div>
               </div>
             </div>
@@ -627,12 +759,19 @@ function BranchesTab({ tenantId, stores, branches, selectedStore, setSelectedSto
               <Btn size="sm" variant="ghost" onClick={() => navigate(`/branch/kitchen?store_id=${selectedStore?.id}&branch_id=${b.id}`)}>Cocina</Btn>
               <Btn size="sm" variant="ghost" onClick={() => navigate(`/branch/riders?store_id=${selectedStore?.id}&branch_id=${b.id}`)}>Reparto</Btn>
               <Btn size="sm" onClick={() => navigate(`/branch/admin?store_id=${selectedStore?.id}&branch_id=${b.id}`)}>Panel sede</Btn>
+              <Btn size="sm" style={{ background:'#7c3aed', color:'#fff' }} onClick={() => {
+                setForm({ name:'', slug:'', city:'', address:'', phone:'' })
+                setError('')
+                // Navegar a staff con la sede pre-seleccionada
+                navigate(`/tenant/admin`, { state: { tab:'staff', store_id: selectedStore?.id, branch_id: b.id, role:'branch_manager' } })
+              }}>Asignar manager</Btn>
             </div>
           </div>
         ))}
       </div>
 
       {/* Crear sede */}
+      <LimitGate limitKey={FEATURES.MAX_BRANCHES} currentCount={storeBranches.length}>
       <div style={{ background:'var(--color-background-primary)', border:'1px solid var(--color-border-tertiary)', borderRadius:14, padding:'18px' }}>
         <h3 style={{ margin:'0 0 14px', fontSize:15, fontWeight:700 }}>➕ Añadir sede</h3>
         {error && <Alert>{error}</Alert>}
@@ -651,19 +790,29 @@ function BranchesTab({ tenantId, stores, branches, selectedStore, setSelectedSto
           <Btn type="submit" disabled={!selectedStore||busy}>{busy?'Creando…':'Crear sede'}</Btn>
         </form>
       </div>
+      </LimitGate>
     </div>
   )
 }
 
 // ── STAFF ────────────────────────────────────────────────────────────
-function StaffTab({ tenantId, stores, branches, accounts, onRefresh }) {
-  const [form,  setForm]  = React.useState({ full_name:'', email:'', password:'', role:'store_admin', store_id:'', branch_id:'' })
+function StaffTab({ tenantId, stores, branches, accounts, onRefresh, selectedStoreId: preSelectedStoreId, preselectedBranchId = '', preselectedRole = 'store_admin' }) {
+  const [form,  setForm]  = React.useState({ full_name:'', email:'', password:'', role: preselectedRole, store_id: preSelectedStoreId||'', branch_id: preselectedBranchId })
   const [busy,  setBusy]  = React.useState(false)
   const [error, setError] = React.useState('')
   const [success,setSuccess]=React.useState('')
 
   const selectedRole   = STAFF_ROLES.find(r=>r[0]===form.role)||STAFF_ROLES[0]
   const scopedBranches = branches.filter(b => b.store_id===form.store_id)
+
+  React.useEffect(() => {
+    setForm(current => ({
+      ...current,
+      role: preselectedRole || current.role,
+      store_id: preSelectedStoreId || current.store_id,
+      branch_id: preselectedBranchId || current.branch_id,
+    }))
+  }, [preSelectedStoreId, preselectedBranchId, preselectedRole])
 
   async function handleCreate(e) {
     e.preventDefault(); setBusy(true); setError(''); setSuccess('')
@@ -681,8 +830,11 @@ function StaffTab({ tenantId, stores, branches, accounts, onRefresh }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16 }}>
       {/* Formulario */}
+      <LimitGate limitKey={FEATURES.MAX_STAFF} currentCount={accounts.length}>
       <div style={{ background:'var(--color-background-primary)', border:'1px solid var(--color-border-tertiary)', borderRadius:14, padding:'18px' }}>
-        <h3 style={{ margin:'0 0 14px', fontSize:15, fontWeight:700 }}>➕ Crear cuenta de staff</h3>
+        <h3 style={{ margin:'0 0 14px', fontSize:15, fontWeight:700 }}>
+          {preSelectedStoreId ? `👤 Crear admin para ${stores.find(s=>s.id===preSelectedStoreId)?.name || 'la tienda'}` : '➕ Crear cuenta de staff'}
+        </h3>
         {error   && <Alert>{error}</Alert>}
         {success && <Alert type="success">{success}</Alert>}
         <form onSubmit={handleCreate} style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -725,6 +877,7 @@ function StaffTab({ tenantId, stores, branches, accounts, onRefresh }) {
           <Btn type="submit" disabled={busy}>{busy?'Creando…':'Crear cuenta'}</Btn>
         </form>
       </div>
+      </LimitGate>
 
       {/* Lista de staff */}
       <div style={{ background:'var(--color-background-primary)', border:'1px solid var(--color-border-tertiary)', borderRadius:14, overflow:'hidden' }}>
@@ -805,7 +958,7 @@ function CustomizeTab({ stores, selectedStore, setSelectedStoreId, onRefresh }) 
           <div style={{ background:'var(--color-background-primary)', border:'1px solid var(--color-border-tertiary)', borderRadius:14, padding:'18px' }}>
             <h3 style={{ margin:'0 0 6px', fontSize:15, fontWeight:700 }}>🎨 Estilo del menú público</h3>
             <p style={{ margin:'0 0 16px', fontSize:13, color:'var(--color-text-secondary)' }}>
-              Así verán el menú tus clientes. Activo: <strong>{currentStyle.icon} {currentStyle.label}</strong>
+              Así verán el menú tus clientes. Activo: <strong>{currentStyle.icon} {currentStyle.label}</strong> · 6 estilos disponibles
             </p>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10 }}>
               {MENU_STYLES.map(s => {

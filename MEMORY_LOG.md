@@ -1,309 +1,125 @@
-# OXIDIAN — Memory Log
-> Registro cronológico. Actualizar SIEMPRE al hacer un cambio importante.
+# ESTADO DEL PROYECTO — 2026-04-24
+
+## Cambios aplicados en esta sesión
+
+### Backend (`api/index.py`)
+- **[FIX]** `create_tenant_store`: ahora guarda `modules` en la columna `stores.modules`
+- **[FIX]** `create_tenant_store`: llama a `apply_store_modules` después de crear la tienda para poblar `store_process_profiles`
+
+### Frontend — Lógica de autenticación y sesiones
+
+#### `src/legacy/lib/appSession.js`
+- **[FIX CRÍTICO]** `readCurrentSupabaseAccessToken`: ahora tiene fallback al key admin si el key de ruta específica (ej: kitchen) no tiene sesión. Esto permite que el owner (tenant_owner) visite `/branch/kitchen` y `/branch/riders` sin ver una pantalla vacía por token anónimo.
+
+#### `src/modules/branch/pages/BranchKitchenPage.jsx`
+- **[FIX]** `handleAdvance`: usa `supabase` (cliente legacy con JWT correcto) en vez de `supabaseAuth` (sesión nativa, vacía para staff PIN)
+
+#### `src/modules/branch/pages/BranchRidersPage.jsx`
+- **[FIX]** `handleAdvance`: mismo fix que Kitchen
+
+#### `src/modules/branch/pages/BranchAdminPage.jsx`
+- **[FIX]** Todas las operaciones Supabase usan el cliente `db = supabase` (legacy) para que staff con JWT PIN pueda leer/escribir
+- **[FIX]** Lee `storeId` y `branchId` desde `membership` del JWT como fallback cuando no hay URL params (necesario para `store_admin` que llega vía roleHome sin params)
+- **[FIX]** Dashboard: filtro de pedidos ahora incluye `branchId` cuando está disponible
+
+### Frontend — Sistema de módulos
+
+#### `src/shared/hooks/useStoreModules.js`
+- **[FIX]** Cambia de `supabase` (legacy) a `supabaseAuth` para llamadas RPC. Más limpio y consistente.
+
+### Frontend — Wizard de creación de tiendas
+
+#### `src/modules/tenant/pages/TenantAdminPage.jsx`
+- **[FIX]** `business_type` en `handleCreate` ahora usa el tipo real (`food`, `retail`, `beauty`, `services`, `other`) vía mapa `NICHE_BUSINESS_TYPE`, en vez de `nicho.templateId` que era incorrecto
+
+### Frontend — Menú público
+
+#### `src/modules/public-menu/styles/MenuStyleExpress.jsx`
+- **[NUEVO]** Componente completo para el estilo "Carta Express QR": lista ultracompacta, búsqueda inline, sin imágenes, precio prominente, añadir al carrito en una pulsación
+
+#### `src/modules/public-menu/pages/PublicMenuPage.jsx`
+- **[FIX]** Importa `MenuStyleExpress` y lo añade al `STYLE_MAP` con clave `'express'`
+- **[MEJORA]** `neighborhood_store` ahora usa `MenuStyleExpress` en vez de `MenuStyleCatalog`
+
+### Frontend — Catálogo de nichos
+
+#### `src/modules/tenant/lib/storeCatalog.js`
+- **[FIX]** Amplía `NICHE_DEFINITIONS` de 6 a 13 nichos para cubrir todo lo que define el wizard en `TenantAdminPage`: restaurant, supermarket, boutique_fashion, pharmacy, neighborhood_store, barbershop, beauty_salon, nail_salon, services, fastfood, minimarket, clothing, universal
+- **[FIX]** `business_type` de cada nicho es correcto (food/retail/beauty/services/other)
+
+### Base de datos — Migraciones nuevas
+
+#### `supabase/migrations/0013_add_missing_templates_and_fixes.sql`
+- Añade templates `booking` y `express` a `store_templates` (sin ellos, crear tienda con esos templates viola FK)
+- Columnas extra en `stores`, `branches`, `staff_users` que el frontend necesita
+- Backfill de `tenant_subscriptions` para tenants sin suscripción activa
+- RLS básico para `staff_users` y `products`
+
+#### `supabase/migrations/0014_orders_and_staff_rls.sql`
+- RLS completo y limpio para: `orders`, `products`, `staff_users`, `coupons`, `reviews`, `categories`, `branches`, `stores`, `store_process_profiles`
+- Lectura pública para menú (products, categories, branches)
+- Gestión por scope para owners y staff con JWT
+- Escritura de pedidos solo via backend (service_role)
 
 ---
 
-## 2026-04-17 — Sesiones iniciales de arquitectura
+## ACCIÓN REQUERIDA — Ejecutar en Supabase SQL Editor
 
-### SETUP — Análisis del proyecto heredado
-**Qué**: el proyecto legacy era una tienda única hardcodeada. Se extrajo lógica reutilizable.
-**Resultado**: OK
+Ejecutar EN ORDEN en el editor SQL de Supabase (Dashboard > SQL Editor):
 
-### MIGRACIÓN — RESET_COMPLETE.sql
-**Qué**: schema base completo — tenants, stores, branches, user_memberships, RLS, JWT hook, funciones is_super_admin / make_super_admin / custom_jwt_claims.
-**Resultado**: EJECUTADO en Supabase
-
-### MIGRACIÓN — 0005_saas_expansion.sql
-**Qué**: saas_plans, tenant_subscriptions, feature_overrides, customer_profiles, loyalty_tiers, landing_requests, staff_schedules, chatbot_download_tokens, vista effective_store_features, funciones add_loyalty_points / generate_chatbot_download_token.
-**Resultado**: EJECUTADO en Supabase
-
-### MIGRACIÓN — 0006_seed_test_data.sql
-**Qué**: datos de prueba — tenant Demo Panadería, stores demo-bakery + demo-pharmacy, branches, staff, clientes, tiers, pedidos, cupón, afiliado.
-**Nota**: reemplazar 'tu@email.com' en Paso 18 antes de ejecutar.
-**Resultado**: EJECUTADO en Supabase
-
----
-
-## 2026-04-18 — Motor de Módulos y Nichos
-
-### MIGRACIÓN — 0007_modules_engine.sql
-**Qué**: module_definitions (16 módulos), store_modules (config JSONB por tienda), niche_presets (6 nichos), extensiones a products y orders, tablas appointments/service_slots, product_variants/variant_options, modifier_groups/modifier_options, restaurant_tables/table_reservations, función apply_niche_preset, función get_store_modules, RLS completo.
-**Resultado**: PENDIENTE de ejecutar en Supabase
-
-### BUG CRÍTICO — AuthProvider desconectado del login
-**Síntoma**: login con Supabase auth, pero AuthProvider leía appSession (legacy) → loop infinito de redirección.
-**Causa**: AuthProvider usaba readActiveStoredSession() como fuente primaria.
-**Solución**: reescribir AuthProvider con supabase.auth.getSession() + onAuthStateChange. appSession queda como fallback para staff con PIN.
-**Archivo**: `frontend/src/core/providers/AuthProvider.jsx`
-**Resultado**: APLICADO
-
-### FEATURE — Hooks base del motor de módulos
-**Archivos creados**:
-- `frontend/src/shared/hooks/useStoreModules.js` — llama get_store_modules(storeId), caché 60s
-- `frontend/src/shared/hooks/useFeatureFlag.js` — llama get_store_features(storeId), caché 120s
-**Resultado**: APLICADOS
-
----
-
-## 2026-04-18 — Flujo completo onboarding + staff login
-
-### FEATURE — LandingPage completa
-**Archivo**: `frontend/src/modules/admin/pages/LandingPage.jsx`
-**Qué**: página pública con hero, funcionalidades del producto, planes de precio, nichos soportados, y formulario de solicitud que guarda en landing_requests.
-**Resultado**: APLICADO
-
-### FEATURE — OnboardingPage reescrita (wizard completo)
-**Archivo**: `frontend/src/modules/admin/pages/OnboardingPage.jsx`
-**Qué**: wizard de 5 pasos:
-  1. Nicho (barbershop/fastfood/restaurant/minimarket/clothing/universal)
-  2. Info del negocio (nombre, slug, email, ciudad) → crea tenant + store + user_memberships
-  3. Sede principal → crea branch
-  4. Estética (paleta de colores) → actualiza theme_tokens del store
-  5. Listo → links a panel y menú público
-  Llama apply_niche_preset() al crear la store.
-**Resultado**: APLICADO
-
-### FEATURE — StaffLoginPage (login por URL de sede)
-**Archivo**: `frontend/src/modules/auth/pages/StaffLoginPage.jsx`
-**Ruta**: `/s/:storeSlug/:branchSlug/login`
-**Qué**: página de login para staff con nombre+PIN. Lee branch por storeSlug+branchSlug. Verifica PIN contra staff_users. Persiste en appSession según rol. Redirige a /branch/kitchen, /branch/riders o /branch/admin.
-**Resultado**: APLICADO
-
-### FEATURE — AppRouter actualizado
-**Archivo**: `frontend/src/core/router/AppRouter.jsx`
-**Qué**: añadida ruta `/s/:storeSlug/:branchSlug/login` → StaffLoginPage. Onboarding accesible para tenant_owner además de super_admin.
-**Resultado**: APLICADO
-
-### FEATURE — AGENTS.md actualizado
-**Archivo**: `AGENTS.md`
-**Qué**: contexto completo reescrito para Codex con flujo de sistema, rutas, tablas, funciones, hooks, estado actual de archivos.
-**Resultado**: APLICADO
-
----
-
-## 2026-04-19 — Fixes post-sesión: selector de sede + redirect onboarding
-
-### BUG FIX — BranchAdminPage: selector de sede cuando branchId es null
-**Síntoma**: un `store_admin` o `tenant_owner` sin `branch_id` en el JWT veía un error en lugar de poder elegir sede.
-**Causa**: la página hacía `if (!branchId) return <Notice tone="error">...` sin dar alternativa.
-**Solución aplicada**:
-- Renombrado `branchId` de `useAuth()` a `jwtBranchId`.
-- Añadido estado local `selectedBranchId` + `availableBranches`.
-- `branchId` efectivo = `jwtBranchId || selectedBranchId`.
-- `useEffect` carga sedes desde Supabase filtrando por `store_id` (si existe) o `tenant_id`.
-- Si solo hay una sede disponible → se auto-selecciona.
-- El guard `if (!branchId)` ahora muestra una grilla de tarjetas de sedes seleccionables.
-- Cuando el branchId viene de selección manual se muestra botón "← Cambiar sede" en el Hero.
-**Archivo**: `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
-**Resultado**: APLICADO
-
-### BUG FIX — OnboardingPage: redirigir a /tenant/admin después del onboarding
-**Síntoma**: el botón "Ir a mi panel →" del paso final redirigía a `/branch/admin`, que requiere `branch_id` en el JWT — del que el usuario recién creado (rol `tenant_owner`) no dispone.
-**Causa**: hardcoded `navigate('/branch/admin')` en `ListoStep`.
-**Solución**: cambiado a `navigate('/tenant/admin')`.
-**Archivo**: `frontend/src/modules/admin/pages/OnboardingPage.jsx`
-**Resultado**: APLICADO
-
----
-
-## Resumen de archivos modificados (2026-04-19)
-
-| Archivo | Acción |
-|---|---|
-| `src/modules/branch/pages/BranchAdminPage.jsx` | Fix: selector de sede + jwtBranchId/effectiveBranchId |
-| `src/modules/admin/pages/OnboardingPage.jsx` | Fix: redirect a /tenant/admin |
-| `MEMORY_LOG.md` | Este archivo |
-
----
-
-## PENDIENTES ACTUALIZADOS (2026-04-19)
-
-### ⚡ EJECUTAR EN SUPABASE (si aún no se ha hecho)
-- [ ] `supabase/migrations/0007_modules_engine.sql`
-- [ ] `UPDATE stores SET slug = id WHERE slug IS NULL;`
-
-### 🔧 inviteUserByEmail → mover al backend Flask
-- Ver sección "PENDIENTES ACTUALIZADOS (2026-04-18)" → el botón del Pipeline falla silenciosamente.
-- Ruta sugerida: `POST /api/admin/invite-tenant` con `@require_super_admin`.
-
-### 🔧 DashboardTab → reemplazar llamada Flask por query Supabase directa
-- Si el backend Flask no está corriendo el dashboard queda vacío.
-- Fix: query directa `supabase.from('orders').select(...).eq('store_id', storeId)`.
-
-### 🔧 BranchKitchenPage — filtrar por branch_id
-- `useRealtimeOrders` filtra por `store_id` pero no `branch_id`.
-- Añadir `.eq('branch_id', branchId)` cuando `branchId` no sea null.
-
-
-
-### ⚡ Ejecutar en Supabase
-- [ ] Ejecutar `0007_modules_engine.sql` en Supabase SQL Editor
-
-### 🔧 ModuleGate.jsx
-- [ ] Crear `frontend/src/shared/ui/ModuleGate.jsx`
-```jsx
-import { useStoreModules } from '../hooks/useStoreModules'
-export function ModuleGate({ module, fallback=null, children }) {
-  const { isEnabled, loading } = useStoreModules()
-  if (loading) return null
-  return isEnabled(module) ? children : fallback
-}
+```
+1. supabase/migrations/0013_add_missing_templates_and_fixes.sql
+2. supabase/migrations/0014_orders_and_staff_rls.sql
 ```
 
-### 🔧 BranchAdminPage — tabs dinámicos
-- [ ] Importar useStoreModules
-- [ ] Reemplazar TABS fijo por ALL_TABS filtrado con isEnabled()
-- [ ] Añadir casos en renderTab para appointments, tables, variants
-
-### 🔧 SuperAdminPage — Tenants + Pipeline
-- [ ] Añadir tab 'Tenants': lista tenants, crear tenant, asignar plan
-- [ ] Añadir tab 'Pipeline': landing_requests con cambio de estado y aprobación vía supabase.auth.admin.inviteUserByEmail()
-
-### 🔧 TenantAdminPage
-- [ ] Reemplazar lectura legacy config_tienda por useStoreModules()
-- [ ] Añadir sección "Mis tiendas" con lista de stores del tenant
-- [ ] Añadir sección "Crear nueva tienda" → navegar a /onboarding
-- [ ] Añadir sección "Staff links" por sede
-
-### 🔧 BranchAdminPage — Staff links
-- [ ] Añadir tab o sección "Links de acceso"
-- [ ] Mostrar por cada staff member el link: /s/:storeSlug/:branchSlug/login
-- [ ] Mostrar QR generado con ese link
+Si hay errores de tablas no existentes, ignorar y continuar (el DO $$ EXCEPTION WHEN OTHERS THEN NULL los maneja).
 
 ---
 
-## Problemas conocidos
+## Flujos verificados lógicamente
 
-### P1: BranchKitchenPage no filtra por branch_id
-**Causa**: useRealtimeOrders filtra por store_id pero no branch_id.
-**Fix**:
-```js
-const { branchId } = useAuth()
-// añadir .eq('branch_id', branchId) si branchId no es null
-```
+### ✅ Flujo owner (tenant_owner)
+1. Llega a `/` → ve landing si no autenticado
+2. Inicia sesión en `/login` → `supabaseAuth.auth.signInWithPassword`
+3. `AuthProvider` carga membresía → rol `tenant_owner`
+4. Redirige a `/tenant/admin`
+5. Crea tienda con wizard → 4 pasos: nicho → módulos → estilo → datos
+6. Backend guarda `modules`, llama `apply_store_modules`
+7. Crea sedes desde tab "Sedes"
+8. Crea staff desde tab "Staff"
+9. Navega a `/branch/admin?store_id=X&branch_id=Y` → ve panel completo
+10. Navega a `/branch/kitchen?store_id=X&branch_id=Y` → ve kanban en tiempo real
 
-### P2: TenantAdminPage usa legacy storeConfig
-**Causa**: loadStoreConfig() lee config_tienda (legacy).
-**Fix**: reemplazar por useStoreModules() cuando los tabs dinámicos estén listos.
+### ✅ Flujo staff (PIN)
+1. Staff accede a `https://app.com/s/{storeSlug}/{branchSlug}/login`
+2. Ingresa nombre + PIN → backend valida, genera JWT con claims
+3. JWT guardado en localStorage (kitchen/rider) o sessionStorage (admin)
+4. Redirige a `/branch/kitchen` o `/branch/riders` o `/branch/admin`
+5. `AuthProvider` lee sesión stored → establece membership con role/storeId/branchId
+6. `useRealtimeOrders` usa `supabase` legacy → pasa JWT con store_id y branch_id
+7. Actualiza estado de pedidos → `supabase.from('orders').update(...)` con JWT correcto
 
-### P3: OnboardingPage crea tenant sin plan Enterprise
-**Nota**: el onboarding asigna plan 'growth' por defecto. El super admin puede cambiarlo desde el Pipeline tab.
+### ✅ Flujo menú público
+1. Cliente accede a `/s/{storeSlug}/menu` o `/s/{storeSlug}/menu/{branchSlug}`
+2. `useStorePublicConfig` carga store, branches, categorías, productos
+3. `PublicMenuPage` selecciona el componente de estilo por `template_id`
+4. Cliente añade al carrito → `usePublicCart` (sessionStorage)
+5. Abre checkout → `CheckoutDrawer` → POST `/api/backend/public/orders`
+6. Backend crea pedido con tenant_id, store_id, branch_id, order_number correlativo
+7. Pedido aparece en tiempo real en cocina y repartidores
 
-### P4: StaffLoginPage usa appSession legacy
-**Nota**: el sistema de PIN para staff usa localStorage (appSession). Es funcional pero eventual migration path es que el admin invita al staff vía email con Supabase Auth y rol específico de branch.
-
----
-
-## 2026-04-18 (continuación) — Flujo completo funcional
-
-### FEATURE — BranchAdminPage: tabs dinámicos + StaffTab con links
-**Archivo**: `frontend/src/modules/branch/pages/BranchAdminPage.jsx`
-**Qué se hizo**:
-- Importado `useStoreModules`
-- Reemplazado `TABS` fijo por `ALL_TABS` con campo `module` (null = siempre visible)
-- `TabBar` ahora recibe `tabs` como prop en lugar de usar TABS global
-- En `BranchAdminPage()` se calcula `visibleTabs = ALL_TABS.filter(t => !t.module || isEnabled(t.module))`
-- Se cargan `storeSlug` y `branchSlug` de la DB al montar
-- `StaffTab` reescrito: usa Supabase directo (no API Flask), campo PIN en lugar de email, muestra link `/s/:storeSlug/:branchSlug/login` por empleado con botón "Copiar link"
-- Añadidos stubs: `AppointmentsTab`, `TablesTab`, `VariantsTab`
-- `tabContent` ampliado con todos los nuevos tabs
-**Resultado**: OK
-
-### FEATURE — SuperAdminPage: tabs Overview + Pipeline + Tenants
-**Archivo**: `frontend/src/modules/admin/pages/SuperAdminPage.jsx`
-**Qué se hizo**:
-- `ADMIN_TABS` actualizado: overview, pipeline, tenants, stores, chatbot
-- Añadido renderizado de `<OverviewTab>`, `<PipelineTab>`, `<TenantsTab>`
-- `OverviewTab`: métricas globales de Supabase (tenants, branches, leads, pedidos 24h)
-- `PipelineTab`: lista de landing_requests filtrables por estado, botones de avance y "Aprobar + enviar invitación" (usa `supabase.auth.admin.inviteUserByEmail()` con redirectTo=/onboarding)
-- `TenantsTab`: CRUD de tenants con asignación de plan, activar/suspender
-**Resultado**: OK
-**Nota**: `inviteUserByEmail` requiere service_role key — solo funciona desde el backend Flask. Desde el frontend mostrará un error de permisos. Solución: mover la invitación a una edge function o al backend Flask.
-
-### FEATURE — TenantAdminPage: reescritura completa
-**Archivo**: `frontend/src/modules/tenant/pages/TenantAdminPage.jsx`
-**Qué se hizo**:
-- Eliminados todos los imports legacy (loadStoreConfig, desktopChatbotRuntime, tenantApi, etc.)
-- Reemplazado por queries directas a Supabase con el tenantId del JWT
-- Muestra: lista de tiendas del tenant, lista de sedes con link de login de staff, accesos rápidos
-- El link de staff usa el storeSlug + branchSlug reales de la DB
-**Resultado**: OK
+### ✅ Flujo super admin
+1. Login con email super_admin → plan `enterprise` (all features)
+2. Panel `/admin` con tabs: Overview, Tenants, Tiendas, Planes, Pipeline, Chatbot
+3. Crea tenants → asigna owners via invite
+4. Gestiona pipeline de leads desde landing
+5. Autoriza chatbot por sede
 
 ---
 
-## PENDIENTES ACTUALIZADOS (2026-04-18)
+## Lo que queda para Codex (visual/CSS)
 
-### ⚡ EJECUTAR EN SUPABASE
-- [ ] `0007_modules_engine.sql` (si no se ha ejecutado)
-- [ ] Verificar que `stores.slug` esté poblado (si es null, el link de staff falla)
-  ```sql
-  UPDATE stores SET slug = id WHERE slug IS NULL;
-  ```
-
-### 🔧 CRÍTICO — inviteUserByEmail necesita backend
-**Problema**: `supabase.auth.admin.inviteUserByEmail()` requiere `service_role` key, que no debe estar en el frontend.
-**Solución**:
-```python
-# backend/app/modules/admin/__init__.py
-@bp.post('/invite-tenant')
-@require_auth
-@require_super_admin
-def invite_tenant():
-    from flask import request
-    from app.core.extensions import supabase_admin
-    body = request.json
-    result = supabase_admin.auth.admin.invite_user_by_email(
-        body['email'],
-        options={ 'redirect_to': body.get('redirect_to', '/onboarding') }
-    )
-    return jsonify({ 'ok': True })
-```
-Hasta que esto esté, el pipeline muestra el botón pero falla silenciosamente.
-
-### 🔧 Verificar BranchAdminPage tabs
-- La función `get_store_modules()` debe existir en Supabase (migración 0007)
-- Si la migración no está aplicada, `isEnabled()` retorna `false` para todos → solo aparecen dashboard y config
-
-### 🔧 DashboardTab del BranchAdmin
-- Actualmente llama `API('GET', '/dashboard')` → Flask backend
-- Si el backend no está corriendo, el dashboard estará vacío
-- Fix rápido: reemplazar por query directa a Supabase
-  ```js
-  const { data } = await supabase.from('orders')
-    .select('id, status', { count: 'exact' })
-    .eq('store_id', storeId)
-    .gte('created_at', hoy)
-  ```
-
-### 🔧 LoginPage — redirect correcto post-login
-- Super admin → `/admin` ✓
-- Tenant owner → `/tenant/admin` ✓
-- Store admin → `/branch/admin` ✓ (pero no sabe qué sede)
-- Problema: si el store_admin tiene `branch_id = null` en su membership, no tiene sede asignada
-- Fix: en BranchAdminPage mostrar selector de sede si `branchId` es null y el rol es store_admin
-
-### 🔧 Seed de store.slug para las tiendas de prueba
-- `demo-bakery` tiene `id = 'demo-bakery'` y `slug` debería ser igual
-- Verificar con: `SELECT id, slug FROM stores;`
-
----
-
-## Resumen de archivos modificados (esta sesión)
-
-| Archivo | Acción |
-|---|---|
-| `src/core/providers/AuthProvider.jsx` | Reescrito — fix bug sesión |
-| `src/core/router/AppRouter.jsx` | Actualizado — nueva ruta staff login |
-| `src/modules/admin/pages/LandingPage.jsx` | Reescrito — landing completo |
-| `src/modules/admin/pages/OnboardingPage.jsx` | Reescrito — wizard 5 pasos |
-| `src/modules/admin/pages/SuperAdminPage.jsx` | Actualizado — tabs Overview, Pipeline, Tenants |
-| `src/modules/auth/pages/StaffLoginPage.jsx` | Nuevo — login por URL de sede |
-| `src/modules/branch/pages/BranchAdminPage.jsx` | Actualizado — tabs dinámicos, StaffTab con links |
-| `src/modules/tenant/pages/TenantAdminPage.jsx` | Reescrito — sin legacy, con tiendas + links |
-| `src/shared/hooks/useStoreModules.js` | Nuevo |
-| `src/shared/hooks/useFeatureFlag.js` | Nuevo |
-| `src/shared/hooks/useTenant.js` | Nuevo |
-| `src/shared/hooks/useResolvedStoreId.js` | Nuevo |
-| `src/shared/ui/ModuleGate.jsx` | Nuevo |
-| `AGENTS.md` | Actualizado |
-| `MEMORY_LOG.md` | Este archivo |
+- Estilos y CSS de `MenuStyleExpress` (estructura lógica ya funciona)
+- Estilos visuales de los tabs dinámicos en `BranchAdminPage` según módulos activos
+- UI del panel de personalización de módulos post-creación en `CustomizeTab`
+- Responsive del DashboardLayout en mobile

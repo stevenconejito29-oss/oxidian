@@ -65,35 +65,73 @@ export function useStorePublicConfig(storeSlugOrId, branchSlugOrId = null) {
         if (!cancelled) setBranch(activeBranch)
 
         // ── 3. Categorías + productos ────────────────────────────
-        const [catsRes, prodsRes] = await Promise.all([
+        // Ejecutamos por separado para que un fallo en categorías no bloquee los productos
+        const [catsRes, prodsRes, combosRes] = await Promise.all([
           sb.from('categories')
             .select('id,name,description,image_url,sort_order,category_type')
             .eq('store_id', storeData.id)
             .eq('is_active', true)
-            .order('sort_order'),
+            .order('sort_order')
+            .catch(() => ({ data: [] })),
           sb.from('products')
             .select('id,name,description,price,compare_price,image_url,emoji,track_stock,stock_quantity,service_duration_minutes,has_variants,variants,modifiers,tags,category_id,sort_order,is_featured,out_of_stock')
             .eq('store_id', storeData.id)
             .eq('is_active', true)
-            .order('sort_order'),
+            .order('sort_order')
+            .catch(() => ({ data: [] })),
+          sb.from('combos')
+            .select('id,name,description,price,emoji,sort_order,available,is_active,items,combo_slots')
+            .eq('store_id', storeData.id)
+            .eq('is_active', true)
+            .order('sort_order')
+            .catch(() => ({ data: [] })),
         ])
 
         const cats  = catsRes.data  || []
         const prods = prodsRes.data || []
+        const combos = combosRes.data || []
 
         // Filtrar productos sin stock si track_stock activo
         const availableProds = prods.filter(p => !p.out_of_stock)
+        const availableCombos = combos
+          .filter(combo => combo.available !== false)
+          .map(combo => ({
+            ...combo,
+            category_id: '__combos__',
+            product_type: 'combo',
+            image_url: combo.image_url || null,
+            compare_price: null,
+            track_stock: false,
+            stock_quantity: 0,
+            service_duration_minutes: null,
+            has_variants: false,
+            variants: [],
+            modifiers: [],
+            tags: ['combo'],
+            is_featured: false,
+            out_of_stock: false,
+          }))
 
         const prodsByCat = {}
-        for (const p of availableProds) {
+        for (const p of [...availableCombos, ...availableProds]) {
           const cid = p.category_id || '__none__'
           if (!prodsByCat[cid]) prodsByCat[cid] = []
           prodsByCat[cid].push(p)
         }
 
-        const sections = cats
+        const sections = [
+          ...(availableCombos.length > 0 ? [{
+            id: '__combos__',
+            name: 'Combos',
+            description: 'Packs y promociones',
+            sort_order: -1,
+            category_type: 'combo',
+            products: prodsByCat.__combos__ || [],
+          }] : []),
+          ...cats
           .map(c => ({ ...c, products: prodsByCat[c.id] || [] }))
-          .filter(c => c.products.length > 0)
+          .filter(c => c.products.length > 0),
+        ]
 
         const uncategorized = prodsByCat['__none__'] || []
         if (uncategorized.length > 0) {

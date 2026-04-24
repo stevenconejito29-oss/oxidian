@@ -7,6 +7,9 @@ RESET = ROOT / "supabase" / "migrations" / "RESET_COMPLETE.sql"
 PLAN_MIGRATION = ROOT / "supabase" / "migrations" / "0008_plans_and_feature_overrides.sql"
 SCHEMA_INDEX = ROOT / "database_schema.sql"
 LANDING_GRANTS_MIGRATION = ROOT / "supabase" / "migrations" / "0011_fix_landing_requests_service_role_grants.sql"
+SECURITY_FIX_MIGRATION = ROOT / "supabase" / "migrations" / "0007_fix_security_and_missing_tables.sql"
+PUBLIC_RLS_MIGRATION = ROOT / "supabase" / "migrations" / "0014_orders_and_staff_rls.sql"
+OPERATIONS_MIGRATION = ROOT / "supabase" / "migrations" / "0016_branch_operations_support.sql"
 
 
 def read_text(path: Path) -> str:
@@ -57,6 +60,31 @@ class SchemaContractTest(unittest.TestCase):
         self.assertIn("on table public.landing_requests", text)
         self.assertIn("to service_role;", text)
         self.assertIn("create policy landing_requests_public_insert", text)
+
+    def test_scope_function_keeps_branch_manager_out_of_store_scope_shortcut(self) -> None:
+        text = read_text(SECURITY_FIX_MIGRATION).lower()
+        self.assertIn("public.current_request_app_role() in ('store_admin', 'store_operator')", text)
+
+    def test_public_rls_policies_are_scoped_to_visible_active_stores(self) -> None:
+        text = read_text(PUBLIC_RLS_MIGRATION).lower()
+        self.assertIn("where s.id = coupons.store_id and s.status = 'active' and s.public_visible = true", text)
+        self.assertIn("where s.id = categories.store_id and s.status = 'active' and s.public_visible = true", text)
+        self.assertIn("where s.id = reviews.store_id and s.status = 'active' and s.public_visible = true", text)
+        self.assertNotIn("with check (true);", text)
+
+    def test_schema_index_mentions_latest_tracking_migration(self) -> None:
+        text = read_text(SCHEMA_INDEX)
+        self.assertIn("0015_orders_tracking_columns.sql", text)
+
+    def test_branch_operations_support_contract(self) -> None:
+        text = read_text(OPERATIONS_MIGRATION).lower()
+        self.assertIn("create table if not exists public.combos", text)
+        self.assertIn("create table if not exists public.stock_item_products", text)
+        self.assertIn("create table if not exists public.cash_entries", text)
+        self.assertIn("create table if not exists public.daily_sales_summary", text)
+        self.assertIn("add column if not exists max_uses integer", text)
+        self.assertIn("add column if not exists valid_from timestamptz", text)
+        self.assertIn("add column if not exists valid_until timestamptz", text)
 
 
 if __name__ == "__main__":
