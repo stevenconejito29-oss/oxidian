@@ -45,6 +45,14 @@ const BRANCH_ADMIN_NAV = [
   { to: '/branch/admin#config', icon: 'settings', label: 'Config', tab: 'config' },
 ]
 
+const BRANCH_OPERATOR_NAV = [
+  { to: '/branch/admin#dashboard', icon: 'overview', label: 'Panel', tab: 'dashboard' },
+  { to: '/branch/admin#products', icon: 'stores', label: 'Productos', tab: 'products' },
+  { to: '/branch/admin#combos', icon: 'combos', label: 'Combos', tab: 'combos' },
+  { to: '/branch/admin#inventory', icon: 'inventory', label: 'Inventario', tab: 'inventory' },
+  { to: '/branch/admin#orders', icon: 'orders', label: 'Pedidos', tab: 'orders' },
+]
+
 const NAV_BY_ROLE = {
   super_admin: [
     { to: '/admin', icon: 'overview', label: 'Panel', tab: 'overview' },
@@ -67,7 +75,7 @@ const NAV_BY_ROLE = {
     { to: '/tenant/admin#staff', icon: 'users', label: 'Staff', tab: 'staff' },
   ],
   store_admin: BRANCH_ADMIN_NAV,
-  store_operator: BRANCH_ADMIN_NAV,
+  store_operator: BRANCH_OPERATOR_NAV,
   branch_manager: BRANCH_ADMIN_NAV,
   cashier: [
     { to: '/branch/admin#dashboard', icon: 'overview', label: 'Panel', tab: 'dashboard' },
